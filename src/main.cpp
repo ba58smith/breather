@@ -1,60 +1,39 @@
-/**
- * A basic example of using the EncoderButton library.
- */
-#include <EncoderButton.h>
+#include <ESP32Encoder.h>
 
-/**
- * Instatiate an EncoderButton.
- * For Arduino Uno, the hardware interrupts are pins 2 & 3
- * For Teensy, you can use any digital pin.
- * Probably better to pick a more meaningful name than 'eb1'...
- * Encoder+button:
- * EncoderButton(byte encoderPin1, byte encoderPin2, byte switchPin);
- * Encoder only:
- * EncoderButton(byte encoderPin1, byte encoderPin2);
- * Button only:
- * EncoderButton(byte switchPin);
- */
-EncoderButton eb1(2, 3, 4);
+ESP32Encoder volume_encoder;
+ESP32Encoder respiration_encoder;
 
+void setup(){
+	
+	Serial.begin(115200);
+	// Enable the weak pull down resistors
 
-/**
- * A function to handle the 'clicked' event
- * Can be called anything but requires EncoderButton& 
- * as its only parameter.
- * I tend to prefix with 'on' and suffix with the 
- * event type.
- */
-void onEb1Clicked(EncoderButton& eb) {
-  Serial.print("eb1 clickCount: ");
-  Serial.println(eb.clickCount());
+	//ESP32Encoder::useInternalWeakPullResistors=DOWN;
+	// Enable the weak pull up resistors
+	ESP32Encoder::useInternalWeakPullResistors=UP;
+
+	// BAS: this was attachHalfQuad in the examples, but I think mine is a full quad encoder
+  // use pin 19 and 18 for the first encoder
+	volume_encoder.attachSingleEdge(23, 18);
+  // BAS: following added, along with a 0.1uF cap to GND, for debouncing
+  volume_encoder.setFilter(1023);
+	// use pin 17 and 16 for the second encoder
+	respiration_encoder.attachSingleEdge(17, 16);
+  respiration_encoder.setFilter(1023);
+		
+	// set starting count to something other than 0, for comparison to respiration_encoder
+	//volume_encoder.setCount(37);
+  volume_encoder.clearCount();
+
+	// clear the encoder's raw count and set the tracked count to zero
+	respiration_encoder.clearCount();
+	Serial.println("Encoder Start = " + String((int32_t)volume_encoder.getCount()));
 }
 
-/**
- * A function to handle the 'encoder' event
- */
-void onEb1Encoder(EncoderButton& eb) {
-  Serial.print("eb1 incremented by: ");
-  Serial.println(eb.increment());
-  Serial.print("eb1 position is: ");
-  Serial.println(eb.position());
-}
-
-void setup() {
-  // put your setup code here, to run once:
-  Serial.begin(9600);
-  delay(500);
-  Serial.println("EncoderButton Basic Example");
-
-  //Link the event(s) to your function
-  eb1.setClickHandler(onEb1Clicked);
-  eb1.setEncoderHandler(onEb1Encoder);
-}
-
-void loop() {
-  // put your main code here, to run repeatedly:
-  // You must call update() for every defined EncoderButton.
-  // This will update the state of the encoder & button and 
-  // fire the appropriat events.
-  eb1.update();
+void loop(){
+	// Loop and read the counts
+	Serial.println("volume_encoder: " + String((int32_t)volume_encoder.getCount()) 
+              + "; respiration_encoder: " + String((int32_t)respiration_encoder.getCount()));
+	delay(1000);
+  
 }
