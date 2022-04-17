@@ -11,23 +11,17 @@ static IRAM_ATTR void respiration_encoder_cb(void* arg) {
   respiration_interrupt_status = true;
 }
 
-/*
 static IRAM_ATTR void volume_encoder_cb(void* arg) {
-  //ESP32Encoder* enc = (ESP32Encoder*) arg; // BAS: I commented this out - doesn't seem to do anything. It's never used.
-  //Serial.printf("enc cb: count: %d\n", enc->getCount()); 
-  //static bool led = false;
   digitalWrite(LED_BUILTIN, (int)led);
   led = !led;
   volume_interrupt_status = true;
 }
-*/
 
 extern bool loopTaskWDTEnabled;
 extern TaskHandle_t loopTaskHandle;
 
+ESP32Encoder volume_encoder(true, volume_encoder_cb);
 ESP32Encoder respiration_encoder(true, respiration_encoder_cb);
-//ESP32Encoder volume_encoder(true, volume_encoder_cb);
-ESP32Encoder volume_encoder(true, respiration_encoder_cb);
 
 void setup(){
 	
