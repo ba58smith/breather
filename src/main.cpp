@@ -20,21 +20,20 @@ static IRAM_ATTR void volume_encoder_cb(void* arg) {
 extern bool loopTaskWDTEnabled;
 extern TaskHandle_t loopTaskHandle;
 
-ESP32Encoder volume_encoder(true, volume_encoder_cb);
 ESP32Encoder respiration_encoder(true, respiration_encoder_cb);
+ESP32Encoder volume_encoder(true, volume_encoder_cb);
 
 void setup(){
 	
 	loopTaskWDTEnabled = true;
   pinMode(LED_BUILTIN, OUTPUT);
   Serial.begin(115200);
-	// Enable the weak pull down resistors
 
+	// Enable the weak pull down resistors
 	//ESP32Encoder::useInternalWeakPullResistors=DOWN;
 	// Enable the weak pull up resistors
 	ESP32Encoder::useInternalWeakPullResistors = UP;
 
-	// BAS: this was attachHalfQuad in the examples, but I think mine is a full quad encoder
   // use pin 17 and 16 for the respiration encoder
 	respiration_encoder.attachSingleEdge(17, 16);
   respiration_encoder.setFilter(1023);  
@@ -63,7 +62,7 @@ void loop(){
       volume_encoder.setCount(6);
     }
     Serial.println("volume_encoder: " + String((int32_t)volume_encoder.getCount()));
-    //Serial.println("respiration_encoder: " + String((int32_t)respiration_encoder.getCount()));
+    Serial.println("respiration_encoder: " + String((int32_t)respiration_encoder.getCount()));
     // BAS: put code here to update the OLED with the new value, and the appropriate stepper
     // variable (volume, rate).
     volume_interrupt_status = false;
@@ -76,10 +75,10 @@ void loop(){
     else if (respiration_encoder.getCount() < 100) {
       respiration_encoder.setCount(120);
     }
+    Serial.println("volume_encoder: " + String((int32_t)volume_encoder.getCount()));
     Serial.println("respiration_encoder: " + String((int32_t)respiration_encoder.getCount()));
     // BAS: put code here to update the OLED with the new value, and the appropriate stepper
     // variable (volume, rate).
     respiration_interrupt_status = false;
   }
-  
 }
