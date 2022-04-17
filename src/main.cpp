@@ -1,11 +1,28 @@
 #include <ESP32Encoder.h>
+#include "esp_task_wdt.h"
 
-ESP32Encoder volume_encoder;
-ESP32Encoder respiration_encoder;
+static bool interrupt_status = false;
+
+static IRAM_ATTR void volume_encoder_cb(void* arg) {
+  //ESP32Encoder* enc = (ESP32Encoder*) arg; // BAS: I commented this out - doesn't seem to do anything.
+  //Serial.printf("enc cb: count: %d\n", enc->getCount()); 
+  static bool led = false;
+  digitalWrite(LED_BUILTIN, (int)led);
+  led = !led;
+  interrupt_status = true;
+}
+
+extern bool loopTaskWDTEnabled;
+extern TaskHandle_t loopTaskHandle;
+
+ESP32Encoder volume_encoder(true, volume_encoder_cb);
+//ESP32Encoder respiration_encoder;
 
 void setup(){
 	
-	Serial.begin(115200);
+	loopTaskWDTEnabled = true;
+  pinMode(LED_BUILTIN, OUTPUT);
+  Serial.begin(115200);
 	// Enable the weak pull down resistors
 
 	//ESP32Encoder::useInternalWeakPullResistors=DOWN;
@@ -18,22 +35,33 @@ void setup(){
   // BAS: following added, along with a 0.1uF cap to GND, for debouncing
   volume_encoder.setFilter(1023);
 	// use pin 17 and 16 for the second encoder
-	respiration_encoder.attachSingleEdge(17, 16);
-  respiration_encoder.setFilter(1023);
+	//respiration_encoder.attachSingleEdge(17, 16);
+  //respiration_encoder.setFilter(1023);
 		
 	// set starting count to something other than 0, for comparison to respiration_encoder
 	//volume_encoder.setCount(37);
-  volume_encoder.clearCount();
+  volume_encoder.setCount(1);
+  Serial.println("volume_encoder: " + String((int32_t)volume_encoder.getCount()));
 
 	// clear the encoder's raw count and set the tracked count to zero
-	respiration_encoder.clearCount();
-	Serial.println("Encoder Start = " + String((int32_t)volume_encoder.getCount()));
+	//respiration_encoder.clearCount();
+
+  esp_task_wdt_add(loopTaskHandle);
 }
 
 void loop(){
-	// Loop and read the counts
-	Serial.println("volume_encoder: " + String((int32_t)volume_encoder.getCount()) 
-              + "; respiration_encoder: " + String((int32_t)respiration_encoder.getCount()));
-	delay(1000);
+
+  if (interrupt_status) {
+    if (volume_encoder.getCount() > 6) {
+      volume_encoder.setCount(1);
+    }
+    else if (volume_encoder.getCount() < 1) {
+      volume_encoder.setCount(6);
+    }
+    Serial.println("volume_encoder: " + String((int32_t)volume_encoder.getCount()));
+    // BAS: put code here to update the OLED with the new value, and the appropriate stepper
+    // variable (volume, rate).
+    interrupt_status = false;
+  }
   
 }
