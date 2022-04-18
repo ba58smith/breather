@@ -8,30 +8,18 @@
  * @brief Updates only the area of the OLED that displays the Volume
  */
 
-int topcornerX = 40;
+int topcornerX = 1;
 int topcornerY = 30;
 int bottomcornerX = 100;
 int bottomcornerY = 60;
 
-int top2cornerX =1;
-int top2cornerY= 30;
-int bottom2cornerX=40;
-int bottom2cornerY=60;
-
-void displayVolume(uint8_t volume){
+void update_oled(uint8_t volume, uint8_t resp){
      Heltec.display->setColor(BLACK); //color to use
      Heltec.display->fillRect(topcornerX, topcornerY, bottomcornerX, bottomcornerY);
      Heltec.display->setColor(WHITE); //color to use
      Heltec.display->drawString(75, 35, String(volume));
      Heltec.display->display();
-     
- }
- void displayResp(uint8_t resp){
-     Heltec.display->setColor(BLACK); //color to use
-     Heltec.display->fillRect(top2cornerX, top2cornerY, bottom2cornerX, bottom2cornerY);
-     Heltec.display->setColor(WHITE); //color to use
-     Heltec.display->drawString(20, 35, String(resp));
-     Heltec.display->display();
+     Serial.println("BPM: " + String(resp) + "   Volume: " + String(volume));
      
  }
 
@@ -103,6 +91,9 @@ float accelerationInMillimetersPerSecondPerSecond = 400;
 float decelerationInMillimetersPerSecondPerSecond = 400;
 uint8_t motor_direction = 1;
 
+uint16_t target_position = 200; // for testing
+uint32_t loop_counter = 1; // for testing
+
 void setup()
 {
 
@@ -136,7 +127,7 @@ void setup()
   stepper.setAccelerationInMillimetersPerSecondPerSecond(accelerationInMillimetersPerSecondPerSecond);
   stepper.setDecelerationInMillimetersPerSecondPerSecond(decelerationInMillimetersPerSecondPerSecond);
   stepper.setSpeedInMillimetersPerSecond(speedInMillimetersPerSecond);
-  stepper.startAsService();
+  stepper.startAsService(1); // BAS: this s/b 0, not 1
   stepper.setCurrentPositionInSteps(0);
 
   Heltec.begin(true /*DisplayEnable Enable*/, false /*LoRa Enable*/, true /*Serial Enable*/);
@@ -147,86 +138,43 @@ void setup()
   Heltec.display->drawString(0, 0, "BPM   |   Volume");
   Heltec.display->display();
   Heltec.display->setFont(ArialMT_Plain_24);
-  displayVolume(get_volume());
-  displayResp(get_resp());
-}
+  update_oled(volume_encoder.getCount(), respiration_encoder.getCount());
+
+  stepper.setTargetPositionInSteps(target_position); // for testing
+} // setup;
 
 void loop() {
-
+  
   if (volume_knob_interrupt_fired) {
-    displayVolume(get_volume());
-    Serial.println("BPM: " + String((int32_t)respiration_encoder.getCount()) + 
-                   "   Volume: " + String((int32_t)volume_encoder.getCount()));
+    
+    update_oled(volume_encoder.getCount(), respiration_encoder.getCount());
     // BAS: put code here to update the OLED with the new value, and the appropriate stepper
     // variable (volume, rate).
+    target_position = get_volume() * 100;
     volume_knob_interrupt_fired = false;
   }
 
   if (respiration_knob_interrupt_fired) {
-    displayResp(get_resp());
-    Serial.println("BPM: " + String((int32_t)respiration_encoder.getCount()) + 
-                   "   Volume: " + String((int32_t)volume_encoder.getCount()));
+    update_oled(volume_encoder.getCount(), respiration_encoder.getCount());;
     // BAS: put code here to update the OLED with the new value, and the appropriate stepper
     // variable (volume, rate).
     respiration_knob_interrupt_fired = false;
   }
 
-  /*
-  if (stepper.getDistanceToTargetSigned() == 0) {
-    Serial.println("Target reached");
-    delay(100);
-    motor_direction *= -1;
-    long relativeTargetPosition = distanceToMoveInMillimeters * motor_direction;
-    stepper.setTargetPositionRelativeInMillimeters(relativeTargetPosition);
-    stepper.setSpeedInMillimetersPerSecond(speedInMillimetersPerSecond);
-  }
-  */
-
-  uint16_t target_position = 200;
-
   stepper.setSpeedInStepsPerSecond(100);
   stepper.setAccelerationInStepsPerSecondPerSecond(100);
   //stepper.setCurrentPositionInSteps(0);
-  //digitalWrite(LED_BUILTIN, !led);
-  bool stopFlag = false;
-  stepper.setTargetPositionInSteps(target_position);
   // now execute the move, looping until the motor has finished
+  Serial.println("motionComplete = " + String(stepper.motionComplete()));
+  Serial.println("target = " + String(target_position));
   while(!stepper.motionComplete()) {
     // Note: The code added to this loop must execute VERY fast.  
     // Perhaps no longer than 0.05 milliseconds.
-    // process motor steps
-    //
     stepper.processMovement();
-    // check if motor has moved past position 400, if so turn On the LED
-    //
-    //if (stepper.getCurrentPositionInSteps() == 100)
-    //  digitalWrite(LED_BUILTIN, !led);
-
-    // check if the user has pressed the "Stop" button, if so decelerate to a stop
-    /*
-    if ((digitalRead(STOP_BUTTON_PIN) == LOW) && (stopFlag == false))
-    {
-      stepper.setTargetPositionToStop();
-      stopFlag = true;
-    }
-    */
   }
   Serial.println("Current position: " + (String)stepper.getCurrentPositionInSteps());
   delay(500);
-  stepper.setTargetPositionInSteps(target_position * -1);
-  while(!stepper.motionComplete()) {
-    // Note: The code added to this loop must execute VERY fast.  
-    // Perhaps no longer than 0.05 milliseconds.
-    // process motor steps
-    //
-    stepper.processMovement();
-    // check if motor has moved past position 400, if so turn On the LED
-    //
-    //if (stepper.getCurrentPositionInSteps() == 100)
-    //  digitalWrite(LED_BUILTIN, !led);
-  }
-  Serial.println("Current position: " + (String)stepper.getCurrentPositionInSteps());
-  delay(500);
+  stepper.setTargetPositionInSteps(target_position * -1 + 1);
 }
 
      
