@@ -73,7 +73,7 @@ float get_volume_as_float() {
   if (count > 6.0)
   {
     count = 1.0;
-    volume_knob.setCount(1);
+    volume_knob.setCount(10);
   }
   else if (count < 1.0)
   {
@@ -200,10 +200,33 @@ void loop() {
   // save the value of bpm_timer immediately on exiting the while()
   uint32_t while_loop_time = bpm_timer;
   // calculate BPM from bpm_timer: ms_in_a_half_minute / while_loop_ms
-  float calculated_bpm = 30000.0 / while_loop_time; // BAS: does ths round the way I want?
+  float calculated_bpm = 30000.0 / while_loop_time;
   Serial.println("inhale while() bpm_timer and calculated BPM: " + String(while_loop_time) + " / " + String(calculated_bpm, 1));
-
+ 
   // now reverse it for the exhale stroke
+  // check the interrupts between the strokes for better updating of the OLED
+  if (volume_knob_interrupt_fired) {
+
+    update_oled(get_volume_as_float(), get_bpm_as_int());
+    target_position_in_mm = get_volume_as_float() * VOLUME_TO_MM_CONVERSION;
+    // do NOT setTargetPosition at this point - on the exhale stroke, targetPosition is always HOME (eventually TDC)
+    volume_knob_interrupt_fired = false;
+  }
+
+  if (bpm_knob_interrupt_fired) {
+    update_oled(get_volume_as_float(), get_bpm_as_int());
+    bpm_desired = get_bpm_as_int() * BPM_MULTIPLIER;
+    stepper.setSpeedInMillimetersPerSecond(bpm_desired);
+    stepper.setAccelerationInMillimetersPerSecondPerSecond(bpm_desired * 1.2);
+    stepper.setDecelerationInMillimetersPerSecondPerSecond(bpm_desired * 1.2);
+    bpm_knob_interrupt_fired = false;
+  }
+
+  delay(200);
+  // BAS: be careful here - if the volume interrupt fired between strokes, target_position_in_mm will be a positive
+  // number at this point because it came from the knob. When we start playing with homing, we may flip directionToHome,
+  // so target_position_in_mm might need to be a negative number at this point, so we'd have to make it negative
+  // inside if (volume_knob_interrupt_fired) {}, so when the next line executes, it would become positive.
   target_position_in_mm *= -1.0;
   stepper.setTargetPositionInMillimeters(HOME);
   while (!stepper.motionComplete()) {
@@ -217,6 +240,7 @@ void loop() {
   Serial.println("exhale while_loop_time and calculated BPM: " + String(while_loop_time) + " / " + String(calculated_bpm, 1));
 
   //delay(100);
+  // change directions for the next inhale
   target_position_in_mm *= -1.0;
   stepper.setTargetPositionInMillimeters(target_position_in_mm);
   
