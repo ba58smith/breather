@@ -43,12 +43,12 @@ const uint8_t motor_direction_pin = 14;
 const uint8_t limit_switch_pin = 39;
 
 // define all the ISR's and ISR callbacks
-static IRAM_ATTR void bpm_encoder_cb(void *arg) {
+static IRAM_ATTR void bpm_knob_cb(void *arg) {
   digitalWrite(LED_BUILTIN, !led);
   bpm_knob_interrupt_fired = true;
 }
 
-static IRAM_ATTR void volume_encoder_cb(void *arg) {
+static IRAM_ATTR void volume_knob_cb(void *arg) {
   digitalWrite(LED_BUILTIN, !led);
   volume_knob_interrupt_fired = true;
 }
@@ -58,8 +58,8 @@ void limit_switch_isr() {
   limit_switch_interrupt_fired = true;
 }
 
-ESP32Encoder bpm_encoder(true, bpm_encoder_cb);
-ESP32Encoder volume_encoder(true, volume_encoder_cb);
+ESP32Encoder bpm_knob(true, bpm_knob_cb);
+ESP32Encoder volume_knob(true, volume_knob_cb);
 
 /**
  * @brief Read the current value of the Volume knob, convert it to a float,
@@ -68,16 +68,16 @@ ESP32Encoder volume_encoder(true, volume_encoder_cb);
  * consistent! 
  */
 float get_volume_as_float() {
-  float count = (float)volume_encoder.getCount() / 10;
+  float count = (float)volume_knob.getCount() / 10;
   if (count > 6.0)
   {
     count = 1.0;
-    volume_encoder.setCount(1);
+    volume_knob.setCount(1);
   }
   else if (count < 1.0)
   {
     count = 6.0;
-    volume_encoder.setCount(60);
+    volume_knob.setCount(60);
   }
   return count;
 }
@@ -88,16 +88,16 @@ float get_volume_as_float() {
  * consistent! 
  */
 uint8_t get_bpm_as_int() {
-  uint8_t count = bpm_encoder.getCount();
+  uint8_t count = bpm_knob.getCount();
   if (count > 6)
   {
     count = 1;
-    bpm_encoder.setCount(1);
+    bpm_knob.setCount(1);
   }
   else if (count < 1)
   {
     count = 6;
-    bpm_encoder.setCount(6);
+    bpm_knob.setCount(6);
   }
   return count;
 }
@@ -121,14 +121,14 @@ void setup() {
   // Enable the weak pull up resistors
   ESP32Encoder::useInternalWeakPullResistors = UP;
 
-  bpm_encoder.attachSingleEdge(bpm_DT_pin, bpm_CLK_pin);
+  bpm_knob.attachSingleEdge(bpm_DT_pin, bpm_CLK_pin);
   // following line, along with a 0.1uF cap to GND, is for debouncing
-  bpm_encoder.setFilter(1023);
-  bpm_encoder.setCount(1);
+  bpm_knob.setFilter(1023);
+  bpm_knob.setCount(1);
 
-  volume_encoder.attachSingleEdge(volume_DT_pin, volume_CLK_pin);
-  volume_encoder.setFilter(1023);
-  volume_encoder.setCount(30);
+  volume_knob.attachSingleEdge(volume_DT_pin, volume_CLK_pin);
+  volume_knob.setFilter(1023);
+  volume_knob.setCount(30);
 
   //attachInterrupt(limit_switch_pin, LOW);
 
