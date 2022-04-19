@@ -2,6 +2,7 @@
 #include <ESP32Encoder.h>
 #include <heltec.h>
 #include <ESP_FlexyStepper.h>
+#include <elapsedMillis.h>
 
 #define HOME 0
 #define BPM_MULTIPLIER 30  // SWAG at this point
@@ -103,6 +104,7 @@ uint8_t get_bpm_as_int() {
 }
 
 ESP_FlexyStepper stepper;
+elapsedMillis bpm_timer = 0;
 
 float motorStepsPerMillimeter = 25; // BAS: verified
 float distanceToMoveInMillimeters = 76;  // controlled by volume knob
@@ -191,16 +193,28 @@ void loop() {
   // begine the inhale stroke  
   while (!stepper.motionComplete()) {
     // Note: Any code added to this loop must execute in no more than 0.05 milliseconds.
+    bpm_timer = 0;
     stepper.processMovement();
   }
+  delay(1500); // for testing when not connected to the stepper
+  // save the value of bpm_timer immediately on exiting the while()
+  uint32_t while_loop_time = bpm_timer;
+  // calculate BPM from bpm_timer: ms_in_a_half_minute / while_loop_ms
+  float calculated_bpm = 30000.0 / while_loop_time; // BAS: does ths round the way I want?
+  Serial.println("inhale while() bpm_timer and calculated BPM: " + String(while_loop_time) + " / " + String(calculated_bpm, 1));
 
   // now reverse it for the exhale stroke
   target_position_in_mm *= -1.0;
   stepper.setTargetPositionInMillimeters(HOME);
   while (!stepper.motionComplete()) {
     // Note: Any code added to this loop must execute in no more than 0.05 milliseconds.
+    bpm_timer = 0;
     stepper.processMovement();
   }
+  delay(1234); // for testing when not connected to the stepper
+  while_loop_time = bpm_timer;
+  calculated_bpm = 60000.0 / (while_loop_time * 2.0); // BAS: does ths round the way I want?
+  Serial.println("exhale while_loop_time and calculated BPM: " + String(while_loop_time) + " / " + String(calculated_bpm, 1));
 
   //delay(100);
   target_position_in_mm *= -1.0;
