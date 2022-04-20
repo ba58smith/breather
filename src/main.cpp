@@ -6,7 +6,7 @@
 
 #define HOME 0
 #define BPM_MULTIPLIER 30  // SWAG at this point
-#define VOLUME_TO_MM_CONVERSION 25 // BAS: 25.0 is an approximation - need to get it exact
+#define VOLUME_TO_MM_CONVERSION 33.3 // BAS: 33.3 is according to Forrest's spec document
 
 int topcornerX = 1;
 int topcornerY = 30;
@@ -68,7 +68,7 @@ ESP32Encoder volume_knob(true, volume_knob_cb);
  * use this function to read the knob, so that all volume values will be
  * consistent! 
  */
-float get_volume_as_float() {
+float get_volume_as_float() { // BAS: make all the values in this function come from #define statements
   float count = (float)volume_knob.getCount() / 10;
   if (count > 6.0)
   {
@@ -88,17 +88,17 @@ float get_volume_as_float() {
  * use this function to read the knob, so that all BPM values will be
  * consistent! 
  */
-uint8_t get_bpm_as_int() {
+uint8_t get_bpm_as_int() { // BAS: make all the values in this function come from #define statements
   uint8_t count = bpm_knob.getCount();
-  if (count > 6)
+  if (count > 40)
   {
-    count = 1;
-    bpm_knob.setCount(1);
+    count = 20;
+    bpm_knob.setCount(20);
   }
-  else if (count < 1)
+  else if (count < 20)
   {
-    count = 6;
-    bpm_knob.setCount(6);
+    count = 40;
+    bpm_knob.setCount(40);
   }
   return count;
 }
@@ -107,10 +107,10 @@ ESP_FlexyStepper stepper;
 elapsedMillis bpm_timer = 0;
 
 float motorStepsPerMillimeter = 25; // BAS: verified
-float distanceToMoveInMillimeters = 76;  // controlled by volume knob
-float speedInMillimetersPerSecond = 200; // controlled by bpm knob
-float accelerationInMillimetersPerSecondPerSecond = 100; // controlled by bpm knob
-float decelerationInMillimetersPerSecondPerSecond = 100; // controlled by bpm knob
+float distanceToMoveInMillimeters = 76;  // just a starting value - is really controlled by volume knob
+float speedInMillimetersPerSecond = 200; // just a starting value - controlled by bpm knob
+float accelerationInMillimetersPerSecondPerSecond = 100; // just a starting value - controlled by bpm knob
+float decelerationInMillimetersPerSecondPerSecond = 100; // just a starting value - controlled by bpm knob
 
 float target_position_in_mm = VOLUME_TO_MM_CONVERSION; // sets the initial target, until the volume knob is turned
 uint8_t bpm_desired = 1 * BPM_MULTIPLIER; // sets the initial BPM, until the BPM knob is turned
@@ -126,19 +126,19 @@ void setup() {
   bpm_knob.attachSingleEdge(bpm_DT_pin, bpm_CLK_pin);
   // following line, along with a 0.1uF cap to GND, is for debouncing
   bpm_knob.setFilter(1023);
-  bpm_knob.setCount(1);
+  bpm_knob.setCount(25); // set the initially-displayed BPM
 
   volume_knob.attachSingleEdge(volume_DT_pin, volume_CLK_pin);
   volume_knob.setFilter(1023);
-  volume_knob.setCount(30);
+  volume_knob.setCount(30); // set the initially-displayed volume (30 is displayed as 3.0)
 
   //attachInterrupt(limit_switch_pin, LOW);
 
   stepper.connectToPins(motor_step_pin, motor_direction_pin);
   stepper.setStepsPerMillimeter(motorStepsPerMillimeter);
+  stepper.setSpeedInMillimetersPerSecond(speedInMillimetersPerSecond);
   stepper.setAccelerationInMillimetersPerSecondPerSecond(accelerationInMillimetersPerSecondPerSecond);
   stepper.setDecelerationInMillimetersPerSecondPerSecond(decelerationInMillimetersPerSecondPerSecond);
-  stepper.setSpeedInMillimetersPerSecond(speedInMillimetersPerSecond);
 
   Heltec.begin(true, false, true);
   Heltec.display->clear();
@@ -181,10 +181,10 @@ void loop() {
 
   if (bpm_knob_interrupt_fired) {
     update_oled(get_volume_as_float(), get_bpm_as_int());
-    bpm_desired = get_bpm_as_int() * BPM_MULTIPLIER;
-    stepper.setSpeedInMillimetersPerSecond(bpm_desired);
-    stepper.setAccelerationInMillimetersPerSecondPerSecond(bpm_desired * 1.2);
-    stepper.setDecelerationInMillimetersPerSecondPerSecond(bpm_desired * 1.2);
+    bpm_desired = get_bpm_as_int(); float desired_piston_speed = abs(target_position_in_mm) * 2.0 * bpm_desired  / 60;
+    stepper.setSpeedInMillimetersPerSecond(desired_piston_speed);
+    stepper.setAccelerationInMillimetersPerSecondPerSecond(desired_piston_speed * desired_piston_speed);
+    stepper.setDecelerationInMillimetersPerSecondPerSecond(desired_piston_speed * desired_piston_speed);
     bpm_knob_interrupt_fired = false;
   }
 
@@ -215,10 +215,10 @@ void loop() {
 
   if (bpm_knob_interrupt_fired) {
     update_oled(get_volume_as_float(), get_bpm_as_int());
-    bpm_desired = get_bpm_as_int() * BPM_MULTIPLIER;
-    stepper.setSpeedInMillimetersPerSecond(bpm_desired);
-    stepper.setAccelerationInMillimetersPerSecondPerSecond(bpm_desired * 1.2);
-    stepper.setDecelerationInMillimetersPerSecondPerSecond(bpm_desired * 1.2);
+    bpm_desired = get_bpm_as_int(); float desired_piston_speed = abs(target_position_in_mm) * 2.0 * bpm_desired  / 60;
+    stepper.setSpeedInMillimetersPerSecond(desired_piston_speed);
+    stepper.setAccelerationInMillimetersPerSecondPerSecond(desired_piston_speed * desired_piston_speed);
+    stepper.setDecelerationInMillimetersPerSecondPerSecond(desired_piston_speed * desired_piston_speed);
     bpm_knob_interrupt_fired = false;
   }
 
