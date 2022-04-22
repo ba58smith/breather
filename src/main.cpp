@@ -33,29 +33,37 @@ static bool volume_knob_interrupt_fired = false;
 static bool pause_btn_interrupt_fired = false;
 static bool limit_switch_interrupt_fired = false;
 
-const uint8_t pause_btn_pin = 38;
-const uint8_t home_btn_pin = 5;
-const uint8_t bpm_CLK_pin = 36;
-const uint8_t bpm_DT_pin = 37;
-const uint8_t volume_CLK_pin = 23;
-const uint8_t volume_DT_pin = 18;
-const uint8_t motor_step_pin = 27;
+const uint8_t pause_btn_pin = 38; // the pushbutton on the bpm encoder
+const uint8_t home_btn_pin = 35; // the pushbutton on the volume encoder
+const uint8_t co2_btn_pin = 25; // the pushbutton on the co2 encoder
+const uint8_t bpm_CLK_pin = 36; // encoder A pins are CLK
+const uint8_t bpm_DT_pin = 37; // encoder B pins are DT
+const uint8_t volume_CLK_pin = 39;
+const uint8_t volume_DT_pin = 34;
+const uint8_t co2_CLK_pin = 32; // sets the timing of the introduction of co2 into the cycle
+const uint8_t co2_DT_pin = 33;
+const uint8_t motor_pulse_pin = 27;
 const uint8_t motor_direction_pin = 14;
-const uint8_t limit_switch_pin = 39;
+const uint8_t limit_switch_data_pin = 12; // BAS: make sure this is the DATA line of the limit switch
+const uint8_t limit_switch_led_pin = 13;
 
 // define all the ISR's and ISR callbacks
 static IRAM_ATTR void bpm_knob_cb(void *arg) {
-  digitalWrite(LED_BUILTIN, !led);
+  digitalWrite(LED_BUILTIN, led);
+  led = !led;
   bpm_knob_interrupt_fired = true;
 }
 
 static IRAM_ATTR void volume_knob_cb(void *arg) {
-  digitalWrite(LED_BUILTIN, !led);
+  digitalWrite(LED_BUILTIN, led);
+  led = !led;
   volume_knob_interrupt_fired = true;
 }
 
 // BAS: check this interrupt inside the two while() loops, to execute an emergency stop?
 void limit_switch_isr() {
+  digitalWrite(LED_BUILTIN, led);
+  led = !led;
   limit_switch_interrupt_fired = true;
 }
 
@@ -117,7 +125,7 @@ uint8_t bpm_desired = 1 * BPM_MULTIPLIER; // sets the initial BPM, until the BPM
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(limit_switch_pin, INPUT_PULLUP);
+  pinMode(limit_switch_data_pin, INPUT_PULLUP);
   Serial.begin(115200);
 
   // Enable the weak pull up resistors
@@ -132,9 +140,9 @@ void setup() {
   volume_knob.setFilter(1023);
   volume_knob.setCount(30); // set the initially-displayed volume (30 is displayed as 3.0)
 
-  //attachInterrupt(limit_switch_pin, LOW);
+  //attachInterrupt(limit_switch_data_pin, LOW);
 
-  stepper.connectToPins(motor_step_pin, motor_direction_pin);
+  stepper.connectToPins(motor_pulse_pin, motor_direction_pin);
   stepper.setStepsPerMillimeter(motorStepsPerMillimeter);
   stepper.setSpeedInMillimetersPerSecond(speedInMillimetersPerSecond);
   stepper.setAccelerationInMillimetersPerSecondPerSecond(accelerationInMillimetersPerSecondPerSecond);
@@ -156,7 +164,7 @@ void setup() {
                             */
   /*
   Serial.println("Starting homing operation");
-  if (!stepper.moveToHomeInSteps(-1, 20.0, (200.0 * 10.0), limit_switch_pin)) {
+  if (!stepper.moveToHomeInSteps(-1, 20.0, (200.0 * 10.0), limit_switch_data_pin)) {
     for (int x = 0; x < 10; x++) {
       digitalWrite(LED_BUILTIN, led);
       led = !led;
