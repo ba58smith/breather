@@ -5,7 +5,7 @@
 #include <elapsedMillis.h>
 
 #define VOLUME_TO_MM_CONVERSION 33.3 // BAS: 33.3 is according to Forrest's spec document
-#define ACTUAL_LENGTH_OF_SCREW_IN_MM 300 // BAS: this is a guess - make it the actual length!
+#define ACTUAL_LENGTH_OF_SCREW_IN_MM 300.0 // BAS: this is a guess - make it the actual length!
 #define MAX_STROKE_LENGTH_IN_MM 254.0 // BAS: 10 inches - just a guess! Need to change to the actual distance
                                       // necessary to get the piston from the "homed" position to the desired 
                                       // starting point for every inhale cycle.
@@ -14,7 +14,7 @@ float home_in_mm = 0.0; // will be set by the homing operation
 // knob display min, max, and starting values
 const float VOL_KNOB_MIN_VAL = 1.0;
 const float VOL_KNOB_MAX_VAL = 6.0;
-const uint16_t VOL_KNOB_START_VAL = 3.0;
+const uint16_t VOL_KNOB_START_VAL = 3;
 const uint16_t BPM_KNOB_MIN_VAL = 10;
 const uint16_t BPM_KNOB_MAX_VAL = 30;
 const uint16_t BPM_KNOB_START_VAL = 20;
@@ -162,7 +162,7 @@ void setup() {
 
   volume_knob.attachSingleEdge(volume_DT_pin, volume_CLK_pin);
   volume_knob.setFilter(1023);
-  volume_knob.setCount(VOL_KNOB_START_VAL); // set the initially-displayed Volume
+  volume_knob.setCount(VOL_KNOB_START_VAL * 10); // set the initially-displayed Volume (3 * 10; will be divide by 10 for display)
 
   //attachInterrupt(limit_switch_data_pin, LOW);
 
@@ -220,7 +220,7 @@ void setup() {
   stepper.setTargetPositionInMillimeters(get_volume_as_float() * VOLUME_TO_MM_CONVERSION);
   update_oled(get_volume_as_float(), get_bpm_as_int());
   set_speed_factors(get_volume_as_float(), get_bpm_as_int());
-  
+
 } // setup;
 
 void loop() {  
