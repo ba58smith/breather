@@ -4,7 +4,7 @@
 #include <ESP_FlexyStepper.h>
 #include <elapsedMillis.h>
 
-#define VOLUME_TO_MM_CONVERSION 33.3 // BAS: 33.3 is according to Forrest's spec document
+#define VOLUME_TO_MM_CONVERSION 33.3 // 33.3 is according to Forrest's spec document
 #define ACTUAL_LENGTH_OF_SCREW_IN_MM 300.0 // BAS: this is a guess - make it the actual length!
 #define MAX_STROKE_LENGTH_IN_MM 254.0 // BAS: 10 inches - just a guess! Need to change to the actual distance
                                       // necessary to get the piston from the "homed" position to the desired 
@@ -143,7 +143,7 @@ void set_speed_factors(float volume, uint16_t bpm) {
   stepper.setDecelerationInMillimetersPerSecondPerSecond(desired_speed * desired_speed);
 }
 
-float motorStepsPerMillimeter = 25; // BAS: verified on Jim's test jig
+float motorStepsPerMillimeter = 25; // verified on Jim's test jig
 
 float target_position_in_mm = VOL_KNOB_START_VAL * VOLUME_TO_MM_CONVERSION; // sets the initial target, until the volume knob is turned
 
@@ -205,7 +205,7 @@ void setup() {
 
   // NOTE: there's no real reason to do this move, and the previous move, separately. I did it that way
   // for now just to illustrate what's happening
-  stepper.setTargetPositionRelativeInMillimeters(MAX_STROKE_LENGTH_IN_MM); // BAS: this might need to be NEGATIVE
+  stepper.setTargetPositionRelativeInMillimeters(MAX_STROKE_LENGTH_IN_MM); // BAS: if piston moves towards limit switch, make this NEGATIVE
   while (!stepper.motionComplete()) {
     // Note: Any code added to this loop must execute in no more than 0.05 milliseconds.
     stepper.processMovement();
