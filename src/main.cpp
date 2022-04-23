@@ -7,6 +7,9 @@
 #define HOME 0
 #define BPM_MULTIPLIER 30  // SWAG at this point
 #define VOLUME_TO_MM_CONVERSION 33.3 // BAS: 33.3 is according to Forrest's spec document
+#define MAX_STROKE_LENGTH_IN_MM 254.0 // BAS: 10 inches - just a guess! Need to change 
+                                      // to the actual distance necessary to get the pistion to the desired 
+                                      // starting point for every inhale cycle.
 
 int topcornerX = 1;
 int topcornerY = 30;
@@ -112,7 +115,7 @@ uint8_t get_bpm_as_int() { // BAS: make all the values in this function come fro
 }
 
 ESP_FlexyStepper stepper;
-elapsedMillis bpm_timer = 0;
+//elapsedMillis bpm_timer = 0;
 
 float motorStepsPerMillimeter = 25; // BAS: verified
 float distanceToMoveInMillimeters = 76;  // just a starting value - is really controlled by volume knob
@@ -158,24 +161,34 @@ void setup() {
   Heltec.display->setFont(ArialMT_Plain_24);
   update_oled(get_volume_as_float(), get_bpm_as_int());
 
-  // Not working yet
   /* stepper.moveToHomeInSteps(char_directionToHome, f_speedInStepsPerSecond, long_maxDistanceToMoveInSteps,
                             int_homeLimitSwitchPin);
                             */
-  /*
   Serial.println("Starting homing operation");
-  if (!stepper.moveToHomeInSteps(-1, 20.0, (200.0 * 10.0), limit_switch_data_pin)) {
-    for (int x = 0; x < 10; x++) {
-      digitalWrite(LED_BUILTIN, led);
-      led = !led;
-      delay(100);
-    }
+  bool homing_successful = stepper.moveToHomeInMillimeters(-1, 10.0, (100), limit_switch_data_pin);
+  Serial.println("Homing successful? " + String(homing_successful));
+  // at this point, the piston should be just past the point where the limit switch has gone HIGH again.
+  // for safety, move the piston another inch or so away from the limit switch
+  stepper.setTargetPositionRelativeInMillimeters(25.4); // BAS: this might need to be NEGATIVE
+  while (!stepper.motionComplete()) {
+    // Note: Any code added to this loop must execute in no more than 0.05 milliseconds.
+    stepper.processMovement();
   }
-  */
 
-  // BAS: Need code here to "home" the piston
-  stepper.setCurrentPositionInMillimeters(HOME);
-  stepper.setTargetPositionInMillimeters(get_volume_as_float() * 25.0);
+  // the piston is now at a position that's the closest it should ever get to the limit switch again,
+  // so now move it to the desired position for the start of each inhale stroke - XX mm farther
+  // NOTE: there's no real reason to do this move, and the previous move, separately. I did it that
+  // for now just to illustrate what's happening
+  stepper.setTargetPositionRelativeInMillimeters(MAX_STROKE_LENGTH_IN_MM); // BAS: this might need to be NEGATIVE
+  while (!stepper.motionComplete()) {
+    // Note: Any code added to this loop must execute in no more than 0.05 milliseconds.
+    stepper.processMovement();
+  }
+  // now we should be at Top Dead Center (TDC) - the point where every inhale stroke begins, and the point where every
+  // exhale stroke returns to.
+
+  // read the current value of the volume encoder and set it as the target position for the first inhale stroke
+  stepper.setTargetPositionInMillimeters(get_volume_as_float() * VOLUME_TO_MM_CONVERSION);
 } // setup;
 
 void loop() {  
@@ -189,7 +202,8 @@ void loop() {
 
   if (bpm_knob_interrupt_fired) {
     update_oled(get_volume_as_float(), get_bpm_as_int());
-    bpm_desired = get_bpm_as_int(); float desired_piston_speed = abs(target_position_in_mm) * 2.0 * bpm_desired  / 60;
+    bpm_desired = get_bpm_as_int(); 
+    float desired_piston_speed = abs(target_position_in_mm) * 2.0 * bpm_desired  / 60;
     stepper.setSpeedInMillimetersPerSecond(desired_piston_speed);
     stepper.setAccelerationInMillimetersPerSecondPerSecond(desired_piston_speed * desired_piston_speed);
     stepper.setDecelerationInMillimetersPerSecondPerSecond(desired_piston_speed * desired_piston_speed);
@@ -201,18 +215,19 @@ void loop() {
   // begine the inhale stroke  
   while (!stepper.motionComplete()) {
     // Note: Any code added to this loop must execute in no more than 0.05 milliseconds.
-    bpm_timer = 0;
+    //bpm_timer = 0;
     stepper.processMovement();
   }
-  delay(1500); // for testing when not connected to the stepper
+  //delay(1500); // for testing when not connected to the stepper
   // save the value of bpm_timer immediately on exiting the while()
-  uint32_t while_loop_time = bpm_timer;
+  //uint32_t while_loop_time = bpm_timer;
   // calculate BPM from bpm_timer: ms_in_a_half_minute / while_loop_ms
-  float calculated_bpm = 30000.0 / while_loop_time;
-  Serial.println("inhale while() bpm_timer and calculated BPM: " + String(while_loop_time) + " / " + String(calculated_bpm, 1));
+  //float calculated_bpm = 30000.0 / while_loop_time;
+  //Serial.println("inhale while() bpm_timer and calculated BPM: " + String(while_loop_time) + " / " + String(calculated_bpm, 1));
  
   // now reverse it for the exhale stroke
   // check the interrupts between the strokes for better updating of the OLED
+  /* BAS: remove for now - Forrest says he doesn't want any changes until getting back to TDC
   if (volume_knob_interrupt_fired) {
 
     update_oled(get_volume_as_float(), get_bpm_as_int());
@@ -229,27 +244,27 @@ void loop() {
     stepper.setDecelerationInMillimetersPerSecondPerSecond(desired_piston_speed * desired_piston_speed);
     bpm_knob_interrupt_fired = false;
   }
+  */
 
   delay(200);
   // BAS: be careful here - if the volume interrupt fired between strokes, target_position_in_mm will be a positive
   // number at this point because it came from the knob. When we start playing with homing, we may flip directionToHome,
   // so target_position_in_mm might need to be a negative number at this point, so we'd have to make it negative
   // inside if (volume_knob_interrupt_fired) {}, so when the next line executes, it would become positive.
-  target_position_in_mm *= -1.0;
+  // target_position_in_mm *= -1.0;
   stepper.setTargetPositionInMillimeters(HOME);
   while (!stepper.motionComplete()) {
     // Note: Any code added to this loop must execute in no more than 0.05 milliseconds.
-    bpm_timer = 0;
+    //bpm_timer = 0;
     stepper.processMovement();
   }
-  delay(1234); // for testing when not connected to the stepper
-  while_loop_time = bpm_timer;
-  calculated_bpm = 60000.0 / (while_loop_time * 2.0); // BAS: does ths round the way I want?
-  Serial.println("exhale while_loop_time and calculated BPM: " + String(while_loop_time) + " / " + String(calculated_bpm, 1));
+  // now the piston is back at the start of a new inhale cycle
+  //delay(1234); // for testing when not connected to the stepper
+  //while_loop_time = bpm_timer;
+  //calculated_bpm = 60000.0 / (while_loop_time * 2.0); // BAS: does ths round the way I want?
+  //Serial.println("exhale while_loop_time and calculated BPM: " + String(while_loop_time) + " / " + String(calculated_bpm, 1));
 
   //delay(100);
-  // change directions for the next inhale
-  target_position_in_mm *= -1.0;
   stepper.setTargetPositionInMillimeters(target_position_in_mm);
   
 } // end loop()
