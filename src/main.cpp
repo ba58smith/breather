@@ -167,6 +167,7 @@ void setup() {
   //attachInterrupt(limit_switch_data_pin, LOW);
 
   stepper.connectToPins(motor_pulse_pin, motor_direction_pin);
+  stepper.startAsService(); // with no param, defaults to 1, which is the second core, which is what we want
   stepper.setStepsPerMillimeter(motorStepsPerMillimeter);
   set_speed_factors(get_volume_as_float(), get_bpm_as_int());
 
