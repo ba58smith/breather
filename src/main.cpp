@@ -5,8 +5,8 @@
 #include <elapsedMillis.h>
 
 #define VOLUME_TO_MM_CONVERSION 33.3 // 33.3 is according to Forrest's spec document
-#define ACTUAL_LENGTH_OF_SCREW_IN_MM 300.0 // BAS: this is a guess - make it the actual length!
-#define MAX_STROKE_LENGTH_IN_MM 254.0 // BAS: 10 inches - just a guess! Need to change to the actual distance
+#define ACTUAL_LENGTH_OF_SCREW_IN_MM 160.0 // BAS: this is from Jim's working code
+#define MAX_STROKE_LENGTH_IN_MM 150.0 // BAS: also from Jim's code: the actual distance
                                       // necessary to get the piston from the "homed" position to the desired 
                                       // starting point for every inhale cycle.
 float home_in_mm = 0.0; // will be set by the homing operation
@@ -192,9 +192,11 @@ void setup() {
   bool homing_successful = stepper.moveToHomeInMillimeters(1, 15, ACTUAL_LENGTH_OF_SCREW_IN_MM, limit_switch_data_pin);
   Serial.println("Homing successful? " + String(homing_successful));
 
-  // at this point, the piston should be just past the point where the limit switch has gone HIGH again.
-  // for safety, move the piston another inch or so away from the limit switch
-  stepper.setTargetPositionRelativeInMillimeters(25.4); // BAS: if piston moves towards limit switch, make this NEGATIVE
+  // at this point, the piston should be just past the point where the limit switch has gone HIGH again, and
+  // moveToHomeInMM() has set this position = to 0. Positions closer to the limit switch are positive, and
+  // positions farther from the limit switch are negative.
+  // for safety, move the piston another inch away from the limit switch
+  stepper.setTargetPositionInMillimeters(-25.4);
   while (!stepper.motionComplete()) {
     // Note: Any code added to this loop must execute in no more than 0.05 milliseconds.
     stepper.processMovement();
@@ -206,7 +208,7 @@ void setup() {
 
   // NOTE: there's no real reason to do this move, and the previous move, separately. I did it that way
   // for now just to illustrate what's happening
-  stepper.setTargetPositionRelativeInMillimeters(MAX_STROKE_LENGTH_IN_MM); // BAS: if piston moves towards limit switch, make this NEGATIVE
+  stepper.setTargetPositionRelativeInMillimeters(-1 * MAX_STROKE_LENGTH_IN_MM);
   while (!stepper.motionComplete()) {
     // Note: Any code added to this loop must execute in no more than 0.05 milliseconds.
     stepper.processMovement();
@@ -214,11 +216,12 @@ void setup() {
   Serial.println("Should now be at the starting point for every inhale stroke");
 
   // now we should be at the point where every inhale stroke begins, and the point where every
-  // exhale stroke returns to. Save it, to be used by the exhale stroke.
-  home_in_mm = stepper.getCurrentPositionInMillimeters();
+  // exhale stroke returns to. Set it to 0, and save it as home_in_mm, to be used by the exhale stroke.
+  stepper.setCurrentPositionInMillimeters(0);
+  home_in_mm = 0.0;
 
   // read the current value of the volume encoder and set it as the target position for the first inhale stroke
-  stepper.setTargetPositionInMillimeters(home_in_mm + (get_volume_as_float() * VOLUME_TO_MM_CONVERSION));
+  stepper.setTargetPositionInMillimeters(get_volume_as_float() * VOLUME_TO_MM_CONVERSION);
   update_oled(get_volume_as_float(), get_bpm_as_int());
   set_speed_factors(get_volume_as_float(), get_bpm_as_int());
 
@@ -231,7 +234,7 @@ void loop() {
     uint16_t current_bpm = get_bpm_as_int();
     update_oled(current_volume, current_bpm);
     set_speed_factors(current_volume, current_bpm);
-    target_position_in_mm = home_in_mm + (current_volume * VOLUME_TO_MM_CONVERSION);
+    target_position_in_mm = current_volume * VOLUME_TO_MM_CONVERSION;
     stepper.setTargetPositionInMillimeters(target_position_in_mm);
     volume_knob_interrupt_fired = false;
   }
@@ -259,7 +262,7 @@ void loop() {
     // Note: Any code added to this loop must execute in no more than 0.05 milliseconds.
     stepper.processMovement();
   }
-  // now the piston is back at the start of a new inhale cycle
+  // now the piston is back at the start of a new inhale cycle, so set the target for that cycle
     stepper.setTargetPositionInMillimeters(target_position_in_mm);
   
 } // end loop()
