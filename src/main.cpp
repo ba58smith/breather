@@ -218,7 +218,7 @@ void setup() {
   home_in_mm = stepper.getCurrentPositionInMillimeters();
 
   // read the current value of the volume encoder and set it as the target position for the first inhale stroke
-  stepper.setTargetPositionInMillimeters(get_volume_as_float() * VOLUME_TO_MM_CONVERSION);
+  stepper.setTargetPositionInMillimeters(home_in_mm + (get_volume_as_float() * VOLUME_TO_MM_CONVERSION));
   update_oled(get_volume_as_float(), get_bpm_as_int());
   set_speed_factors(get_volume_as_float(), get_bpm_as_int());
 
@@ -231,7 +231,7 @@ void loop() {
     uint16_t current_bpm = get_bpm_as_int();
     update_oled(current_volume, current_bpm);
     set_speed_factors(current_volume, current_bpm);
-    target_position_in_mm = current_volume * VOLUME_TO_MM_CONVERSION;
+    target_position_in_mm = home_in_mm + (current_volume * VOLUME_TO_MM_CONVERSION);
     stepper.setTargetPositionInMillimeters(target_position_in_mm);
     volume_knob_interrupt_fired = false;
   }
