@@ -9,7 +9,7 @@
 #define MAX_STROKE_LENGTH_IN_MM 150.0 // BAS: also from Jim's code: the actual distance
                                       // necessary to get the piston from the "homed" position to the desired 
                                       // starting point for every inhale cycle.
-float home_in_mm = 0.0; // will be set by the homing operation
+float home_in_mm = 0.0; // will be set by the homing operation, which should set it to 0.0
 
 // knob display min, max, and starting values
 const float VOL_KNOB_MIN_VAL = 1.0;
@@ -18,6 +18,9 @@ const uint16_t VOL_KNOB_START_VAL = 3;
 const uint16_t BPM_KNOB_MIN_VAL = 10;
 const uint16_t BPM_KNOB_MAX_VAL = 30;
 const uint16_t BPM_KNOB_START_VAL = 20;
+const float CO2_KNOB_MIN_VAL = 0.0;
+const float CO2_KNOB_MAX_VAL = 3.0;
+const uint16_t CO2_KNOB_START_VAL = 0;
 
 // defines the region of the OLED to be updated with knob turns
 int topcornerX = 1;
@@ -34,23 +37,63 @@ static bool bpm_knob_interrupt_fired = false;
 static bool volume_knob_interrupt_fired = false;
 
 // not yet implented:
-static bool home_btn_interrupt_fired = false;
 static bool pause_btn_interrupt_fired = false;
+static bool pause_btn_action_is_pause = true; // true = pause, false = resume. This switches with each button press, in the isr.
+                                               // start with true here, so when it's first pushed, to start the first inhale cycle,
+                                               // it becomes false (resume) before being acted on.
+static bool home_btn_interrupt_fired = false;
+
+static float co2_duration = 0.0;
+static bool co2_enabled = false;
+static bool co2_btn_action_is_disable = false; // true = disable, false = enable. This switches with each button press, in the isr.
+                                               // start with false here, so when it's first pushed, it becomes true before being acted on.
+elapsedMillis co2_timer = 0.00;                                                
 
 // define all pins to match Forrest's schematic
 const uint8_t pause_btn_pin = 38; // the pushbutton on the bpm encoder
 const uint8_t home_btn_pin = 35; // the pushbutton on the volume encoder
 const uint8_t co2_btn_pin = 25; // the pushbutton on the co2 encoder
+const uint8_t co2_valve_pin = 17; // opens / closes the co2 valve
 const uint8_t bpm_CLK_pin = 36; // encoder A pins are CLK
 const uint8_t bpm_DT_pin = 37; // encoder B pins are DT
 const uint8_t volume_CLK_pin = 39;
 const uint8_t volume_DT_pin = 34;
-const uint8_t co2_CLK_pin = 32; // sets the timing of the introduction of co2 into the cycle
+const uint8_t co2_CLK_pin = 32; // sets the length of time the CO2 valve is open
 const uint8_t co2_DT_pin = 33;
 const uint8_t motor_pulse_pin = 27;
 const uint8_t motor_direction_pin = 14;
-const uint8_t limit_switch_data_pin = 12; // BAS: make sure this is the DATA line of the limit switch
+const uint8_t limit_switch_data_pin = 12;
 const uint8_t limit_switch_led_pin = 13;
+
+/**
+ * @brief Open the CO2 valve. Called at the beginning of each exhale stroke.
+ * Valve will be closed by close_co2_valve() after co2_duration (which is a global variable)
+ * 
+ * return value can be used to determine if close_co2_valve() needs to be called.
+ */
+
+bool open_co2_valve() {
+  if (co2_enabled && co2_duration > 0.0) {
+    // start the elapsedMillis timer
+    co2_timer = 0;
+    // open the valve
+    digitalWrite(co2_valve_pin, LOW); // Forrest always makes things active LOW
+    return true;
+  }
+  else { // not supposed to open the valve
+    return false;
+  }
+}
+
+/**
+ * @brief Close the CO2 valve. Called after co2_duration inside the stepper while() loop (IF co2_timer > co2_duration),
+ * and immediately if the co2_btn_pin goes LOW (which is connected to the co2_btn_isr, which calls this function)
+ */
+
+void close_co2_valve() {
+  digitalWrite(co2_valve_pin, HIGH);
+}
+
 
 // define the knob turn callbacks
 static IRAM_ATTR void bpm_knob_cb(void *arg) {
@@ -65,9 +108,46 @@ static IRAM_ATTR void volume_knob_cb(void *arg) {
   volume_knob_interrupt_fired = true;
 }
 
+// define the button push isrs
+
+static IRAM_ATTR void pause_btn_isr() {
+  digitalWrite(LED_BUILTIN, led);
+  led = !led;
+  close_co2_valve(); // don't wait for the pause_btn_interrupt_fired flag to be evaluated in loop() - close it NOW.
+  pause_btn_action_is_pause = !pause_btn_action_is_pause; // flip the action btwn "pause" and "resume" BEFORE setting the interrupt flag
+  pause_btn_interrupt_fired = true;
+}
+
+static IRAM_ATTR void home_btn_isr() {
+  digitalWrite(LED_BUILTIN, led);
+  led = !led;
+  close_co2_valve(); // don't wait for the home_btn_interrupt_fired flag to be evaluated in loop() - close it NOW.
+  home_btn_interrupt_fired = true;
+}
+
+static IRAM_ATTR void co2_btn_isr() {
+  // BAS: remove the led stuff after testing is complete
+  digitalWrite(LED_BUILTIN, led);
+  led = !led;
+  co2_btn_action_is_disable = !co2_btn_action_is_disable; // flip the action btwn "disable" and "enable" BEFORE acting on the button push
+  if (co2_btn_action_is_disable) { // button press at this time means "disable"
+    // close the co2 valve immediately
+    digitalWrite(co2_valve_pin, HIGH);
+    // disable it until a future button push
+    co2_enabled = false;
+  }
+  else { // button means "enable"
+    // enable co2 until a future button push, but don't open the valve at this point
+    co2_enabled = true;
+  }
+}
+
+
 // instantiate the encoders with their associated callback functions
 ESP32Encoder bpm_knob(true, bpm_knob_cb);
 ESP32Encoder volume_knob(true, volume_knob_cb);
+// Forrest's code doesn't use the callbacks, I don't think
+ESP32Encoder co2_knob;
 
 /**
  * @brief Updates only the area of the OLED that displays the BPM and Volume values
@@ -85,7 +165,7 @@ void update_oled(float volume, uint8_t bpm) {
 
 /**
  * @brief Read the current value of the Volume knob, convert it to a float,
- * make sure it's within the define minimum and maximum values for this knob,
+ * make sure it's within the defined minimum and maximum values for this knob,
  * and return 1/10 of the value, so the display can be to 1 decimal. Always
  * use this function to read the knob, so that all volume values will be
  * consistent!
@@ -125,6 +205,34 @@ uint8_t get_bpm_as_int() {
   return count_as_int;
 }
 
+/**
+ * @brief Read the current value of the CO2 knob, convert it to a float,
+ * make sure it's within the defined minimum and maximum values for this knob,
+ * and return 1/100 of the value, so the display will be to 2 decimals (0.03 seconds). Always
+ * use this function to read the knob, so that all CO2 values will be
+ * consistent!
+ * 
+ * To the user (on the LED), CO2 values are in seconds: 0.05 seconds, 1.03 seconds, 2.20 seconds, etc.
+ * 
+ * Note - since the encoders deal in ints, getCount() and setCount() do too.
+ * So getCount() values are divided by 100 to convert, for example, 20 to 0,20 seconds,
+ * and setCount() values are multiplied by 100, so 0.20 seconds becomes 20.
+ */
+float get_co2_duration_as_float() {
+  float count_as_float = (float)(co2_knob.getCount() / 100);
+  if (count_as_float > CO2_KNOB_MAX_VAL) {
+    count_as_float = CO2_KNOB_MIN_VAL;
+    volume_knob.setCount((uint16_t)(CO2_KNOB_MIN_VAL * 100));
+  }
+  else if (count_as_float < CO2_KNOB_MIN_VAL) {
+    count_as_float = CO2_KNOB_MAX_VAL;
+    volume_knob.setCount((uint16_t)(CO2_KNOB_MAX_VAL * 100));
+  }
+  return count_as_float;
+}
+
+
+
 // Instantiate the stepper
 ESP_FlexyStepper stepper;
 
@@ -162,9 +270,15 @@ void setup() {
 
   volume_knob.attachSingleEdge(volume_DT_pin, volume_CLK_pin);
   volume_knob.setFilter(1023);
-  volume_knob.setCount(VOL_KNOB_START_VAL * 10); // set the initially-displayed Volume (3 * 10; will be divide by 10 for display)
+  volume_knob.setCount(VOL_KNOB_START_VAL * 10); // set the initially-displayed Volume (3 * 10; will be divided by 10 for display)
 
-  //attachInterrupt(limit_switch_data_pin, LOW);
+  co2_knob.attachSingleEdge(co2_DT_pin, co2_CLK_pin);
+  co2_knob.setFilter(1023);
+  co2_knob.setCount(CO2_KNOB_START_VAL * 100); // set the initially-displayed CO2 timing (0 * 100; will be divided by 100 for display)
+
+  attachInterrupt(co2_btn_pin, co2_btn_isr, LOW);
+  attachInterrupt(pause_btn_pin, pause_btn_isr, LOW);
+  attachInterrupt(home_btn_pin, home_btn_isr, LOW);
 
   stepper.connectToPins(motor_pulse_pin, motor_direction_pin);
   stepper.startAsService(); // with no param, defaults to 1, which is the second core, which is what we want
@@ -247,10 +361,36 @@ void loop() {
     bpm_knob_interrupt_fired = false;
   }
 
+  // BAS: I think this needs to be inside the while() that processes the movement. See the example.
+  // It ALSO needs to be looked at by the code that controls the "state machine", because if this button
+  // is pushed while the state is STATE_IDLE, it needs to move the state to STATE_INHALE - if the value 
+  // of pause_btn_action_is_pause is false (resume) at that time.
+  // OR - when IDLE, "pause" doesn't really make sense. So, if STATE_IDLE when this button is pushed,
+  // regardless of the value of pause_btn_action_is_pause, change state to STATE_INHALE and set the
+  // value of pause_btn_action_is_pause to false (resume), so the NEXT time the button is pushed, it will
+  // flip to true (pause), so that emergencyStop() will be called.
+    if (pause_btn_interrupt_fired) {
+    if (pause_btn_action_is_pause) { // button press at this time means "pause"
+      // co2 valve was already closed, in the isr for this button
+      stepper.emergencyStop(true); // "true" means "wait for a call to stepper.releaseEmergencyStop()"
+    }
+    else { // button means "resume"
+      stepper.releaseEmergencyStop(); // Is this right? Will that just resume where we left off? I think so.
+    }
+  }
+
+  // BAS: I think this needs to be inside the while() that processes the movement. See the example.
+  if (home_btn_interrupt_fired) {
+    // co2 valve was already closed, in the isr for this button
+    // do not change the status of co2_enabled flag - if it was enabled, it should still be enabled.
+    stepper.emergencyStop(false); // "false" means "don't wait for a call to stepper.releaseEmergencyStop()" - is this correct?
+    // go through the entire homing process, like at startup (which needs to be in a function)
+  }
+
   delay(200);
   
   // begine the inhale stroke  
-  while (!stepper.motionComplete()) {
+  while (!stepper.motionComplete()) { // direction == 0 and currentPostion == targePosition
     // Note: Any code added to this loop must execute in no more than 0.05 milliseconds.
     stepper.processMovement();
   }
