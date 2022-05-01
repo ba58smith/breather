@@ -1,23 +1,28 @@
+#define LOG_LOCAL_LEVEL CONFIG_LOG_MAXIMUM_LEVEL_LOG_VERBOSE
+#include "esp_log.h"
 #include <Arduino.h>
 #include <ESP32Encoder.h>
+#include <math.h>
 #include <heltec.h>
 #include <ESP_FlexyStepper.h>
 #include <elapsedMillis.h>
 
 #define VOLUME_TO_MM_CONVERSION 33.3 // 33.3 is according to Forrest's spec document
-#define ACTUAL_LENGTH_OF_SCREW_IN_MM 160.0 // BAS: this is from Jim's working code
-#define MAX_STROKE_LENGTH_IN_MM 150.0 // BAS: also from Jim's code: the actual distance
-                                      // necessary to get the piston from the "homed" position to the desired 
-                                      // starting point for every inhale cycle.
+#define ACTUAL_LENGTH_OF_SCREW_IN_MM 275.0 // this is the actual length
+#define MAX_STROKE_LENGTH_IN_MM 250.0 // this is the actual distance
 float home_in_mm = 0.0; // will be set by the homing operation
 
 // knob display min, max, and starting values
 const float VOL_KNOB_MIN_VAL = 1.0;
-const float VOL_KNOB_MAX_VAL = 6.0;
-const uint16_t VOL_KNOB_START_VAL = 3;
+const float VOL_KNOB_MAX_VAL = 7.0;
+const uint16_t VOL_KNOB_START_VAL = 7;
 const uint16_t BPM_KNOB_MIN_VAL = 10;
-const uint16_t BPM_KNOB_MAX_VAL = 30;
-const uint16_t BPM_KNOB_START_VAL = 20;
+const uint16_t BPM_KNOB_MAX_VAL = 90;
+const uint16_t BPM_KNOB_START_VAL = 10;
+const int32_t CO2_KNOB_MIN_VAL = 0;
+const int32_t CO2_KNOB_MAX_VAL = 300;
+const int32_t CO2_KNOB_START_VAL = 0;
+const float RMV_MAX_VAL = 280.00;
 
 // defines the region of the OLED to be updated with knob turns
 int topcornerX = 1;
@@ -47,10 +52,11 @@ const uint8_t volume_CLK_pin = 39;
 const uint8_t volume_DT_pin = 34;
 const uint8_t co2_CLK_pin = 32; // sets the timing of the introduction of co2 into the cycle
 const uint8_t co2_DT_pin = 33;
+const uint8_t motor_direction_pin = 26;
 const uint8_t motor_pulse_pin = 27;
-const uint8_t motor_direction_pin = 14;
-const uint8_t limit_switch_data_pin = 12; // BAS: make sure this is the DATA line of the limit switch
-const uint8_t limit_switch_led_pin = 13;
+const uint8_t limit_switch_data_pin = 13;
+
+float motorStepsPerMillimeter = 25; // verified on Jim's test jig
 
 // define the knob turn callbacks
 static IRAM_ATTR void bpm_knob_cb(void *arg) {
@@ -65,6 +71,8 @@ static IRAM_ATTR void volume_knob_cb(void *arg) {
   volume_knob_interrupt_fired = true;
 }
 
+// Instantiate the stepper
+ESP_FlexyStepper stepper;
 // instantiate the encoders with their associated callback functions
 ESP32Encoder bpm_knob(true, bpm_knob_cb);
 ESP32Encoder volume_knob(true, volume_knob_cb);
@@ -97,12 +105,12 @@ void update_oled(float volume, uint8_t bpm) {
 float get_volume_as_float() {
   float count_as_float = (float)(volume_knob.getCount() / 10);
   if (count_as_float > VOL_KNOB_MAX_VAL) {
-    count_as_float = VOL_KNOB_MIN_VAL;
-    volume_knob.setCount((uint16_t)(VOL_KNOB_MIN_VAL * 10));
-  }
-  else if (count_as_float < VOL_KNOB_MIN_VAL) {
     count_as_float = VOL_KNOB_MAX_VAL;
     volume_knob.setCount((uint16_t)(VOL_KNOB_MAX_VAL * 10));
+  }
+  else if (count_as_float < VOL_KNOB_MIN_VAL) {
+    count_as_float = VOL_KNOB_MIN_VAL;
+    volume_knob.setCount((uint16_t)(VOL_KNOB_MIN_VAL * 10));
   }
   return count_as_float;
 }
@@ -115,18 +123,15 @@ float get_volume_as_float() {
 uint8_t get_bpm_as_int() {
   uint8_t count_as_int = bpm_knob.getCount();
   if (count_as_int > BPM_KNOB_MAX_VAL) {
-    count_as_int = BPM_KNOB_MIN_VAL;
-    bpm_knob.setCount(BPM_KNOB_MIN_VAL);
-  }
-  else if (count_as_int < BPM_KNOB_MIN_VAL) {
     count_as_int = BPM_KNOB_MAX_VAL;
     bpm_knob.setCount(BPM_KNOB_MAX_VAL);
   }
+  else if (count_as_int < BPM_KNOB_MIN_VAL) {
+    count_as_int = BPM_KNOB_MIN_VAL;
+    bpm_knob.setCount(BPM_KNOB_MIN_VAL);
+  }
   return count_as_int;
 }
-
-// Instantiate the stepper
-ESP_FlexyStepper stepper;
 
 
 /**
@@ -142,8 +147,6 @@ void set_speed_factors(float volume, uint16_t bpm) {
   stepper.setAccelerationInMillimetersPerSecondPerSecond(desired_speed * desired_speed);
   stepper.setDecelerationInMillimetersPerSecondPerSecond(desired_speed * desired_speed);
 }
-
-float motorStepsPerMillimeter = 25; // verified on Jim's test jig
 
 float target_position_in_mm = VOL_KNOB_START_VAL * VOLUME_TO_MM_CONVERSION; // sets the initial target, until the volume knob is turned
 
@@ -166,11 +169,6 @@ void setup() {
 
   //attachInterrupt(limit_switch_data_pin, LOW);
 
-  stepper.connectToPins(motor_pulse_pin, motor_direction_pin);
-  stepper.startAsService(); // with no param, defaults to 1, which is the second core, which is what we want
-  stepper.setStepsPerMillimeter(motorStepsPerMillimeter);
-  set_speed_factors(get_volume_as_float(), get_bpm_as_int());
-
   Heltec.begin(true, false, true);
   Heltec.display->clear();
   Heltec.display->display();
@@ -180,6 +178,13 @@ void setup() {
   Heltec.display->display();
   Heltec.display->setFont(ArialMT_Plain_24);
   update_oled(get_volume_as_float(), get_bpm_as_int());
+
+  stepper.connectToPins(motor_pulse_pin, motor_direction_pin);
+  stepper.setStepsPerMillimeter(motorStepsPerMillimeter);
+  stepper.startAsService(0); // with no param, defaults to 1, which is the second core, which is what we want
+  stepper.isStartedAsService() ?  Serial.println("Stepper started in Core0") : Serial.println("Stepper failed to start in Core 0");
+  delay(1000);
+  set_speed_factors(get_volume_as_float(), get_bpm_as_int());
 
   /* 
   These are the parameters to moveToHomeInMillimeters:
