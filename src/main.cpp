@@ -44,18 +44,18 @@ bool co2_valve_opened = false;
 bool btn_state_changed = false; // triggers update_oled_values()                                        
 
 // define all pins to match Forrest's schematic
-const uint8_t pause_btn_pin = 38; // 38: the pushbutton on the bpm encoder BAS: make this 5 because of a problem with my board
-const uint8_t home_btn_pin = 35; // 35: the pushbutton on the volume encoder BAS: make this 23 because of a problem with my board
-const uint8_t co2_btn_pin = 25; // the pushbutton on the co2 encoder
+const uint8_t pause_btn_pin = 35; // 35: the pushbutton on the bpm encoder BAS: make this 5 because of a problem with my board
+const uint8_t home_btn_pin = 38; // 38: the pushbutton on the volume encoder BAS: make this 23 because of a problem with my board
+const uint8_t co2_btn_pin = 19; // the pushbutton on the co2 encoder
 const uint8_t co2_valve_pin = 17; // opens / closes the co2 valve
-const uint8_t bpm_CLK_pin = 36; // encoder A pins are CLK
-const uint8_t bpm_DT_pin = 37; // encoder B pins are DT
-const uint8_t volume_CLK_pin = 39;
-const uint8_t volume_DT_pin = 34;
+const uint8_t bpm_CLK_pin = 39; // encoder A pins are CLK
+const uint8_t bpm_DT_pin = 34; // encoder B pins are DT
+const uint8_t volume_CLK_pin = 37;
+const uint8_t volume_DT_pin = 36;
 const uint8_t co2_CLK_pin = 32; // sets the timing of the introduction of co2 into the cycle
 const uint8_t co2_DT_pin = 33;
-const uint8_t motor_direction_pin = 27;
-const uint8_t motor_pulse_pin = 26;
+const uint8_t motor_direction_pin = 26;
+const uint8_t motor_pulse_pin = 27;
 const uint8_t limit_switch_data_pin = 13;
 
 float motorStepsPerMillimeter = 25; // verified on Jim's test jig
