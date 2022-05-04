@@ -107,8 +107,8 @@ void close_co2_valve() {
 static IRAM_ATTR void pause_btn_isr() {
   static unsigned long last_interrupt_time = 0;
   unsigned long interrupt_time = millis();
-  // If interrupts come faster than 200ms, assume it's a bounce and ignore
-  if (interrupt_time - last_interrupt_time > 200)
+  // If interrupts come faster than 1000 ms, assume it's a bounce and ignore
+  if (interrupt_time - last_interrupt_time > 1000)
   {
   close_co2_valve(); // whether the pause_btn is in PAUSE or RESUME mode, this is still OK
   pause_btn_interrupt_fired = true;
@@ -119,8 +119,8 @@ static IRAM_ATTR void pause_btn_isr() {
 static IRAM_ATTR void home_btn_isr() {
   static unsigned long last_interrupt_time = 0;
   unsigned long interrupt_time = millis();
-  // If interrupts come faster than 200ms, assume it's a bounce and ignore
-  if (interrupt_time - last_interrupt_time > 200)
+  // If interrupts come faster than 1000 ms, assume it's a bounce and ignore
+  if (interrupt_time - last_interrupt_time > 1000)
   {
   Serial.println("home_btn_isr fired");
   close_co2_valve();
@@ -132,8 +132,8 @@ static IRAM_ATTR void home_btn_isr() {
 static IRAM_ATTR void co2_btn_isr() {
   static unsigned long last_interrupt_time = 0;
   unsigned long interrupt_time = millis();
-  // If interrupts come faster than 200ms, assume it's a bounce and ignore
-  if (interrupt_time - last_interrupt_time > 200)
+  // If interrupts come faster than 1000 ms, assume it's a bounce and ignore
+  if (interrupt_time - last_interrupt_time > 1000)
   {
   if (co2_btn_action == DISABLE) {
     close_co2_valve();
@@ -285,11 +285,11 @@ float get_co2_duration_as_float() {
   float count_as_float = ((float)(co2_knob.getCount()) / 100.0);
   if (count_as_float > CO2_KNOB_MAX_VAL) {
     count_as_float = CO2_KNOB_MAX_VAL;
-    volume_knob.setCount((uint16_t)(CO2_KNOB_MAX_VAL * 100));
+    co2_knob.setCount((uint16_t)(CO2_KNOB_MAX_VAL * 100));
   }
   else if (count_as_float < CO2_KNOB_MIN_VAL) {
     count_as_float = CO2_KNOB_MIN_VAL;
-    volume_knob.setCount((uint16_t)(CO2_KNOB_MIN_VAL * 100));
+    co2_knob.setCount((uint16_t)(CO2_KNOB_MIN_VAL * 100));
   }
   return count_as_float;
 }
@@ -500,7 +500,7 @@ void loop() {
         if (pause_btn_action == PAUSE) {
           // co2 valve was already closed, in the isr for this button
           pause_btn_action = RESUME; // set for the next button press
-          stepper.emergencyStop(true); // "true" means "wait for a call to stepper.releaseEmergencyStop()"
+          stepper.emergencyStop(true); // "true" means "wait for a call to releaseEmergencyStop()"
           Serial.println("INHALE: pause_btn emergencyStop()");
           pause_btn_interrupt_fired = false;
           emx_stop_in_effect = true;
@@ -546,7 +546,7 @@ void loop() {
         if (pause_btn_action == PAUSE) {
           // co2 valve was already closed, in the isr for this button
           pause_btn_action = RESUME; // set for the next button press
-          stepper.emergencyStop(true); // "true" means "wait for a call to stepper.releaseEmergencyStop()"
+          stepper.emergencyStop(true); // "true" means "wait for a call to releaseEmergencyStop()"
           Serial.println("EXHALE: pause_btn emergencyStop()");
           pause_btn_interrupt_fired = false;
           emx_stop_in_effect = true;
