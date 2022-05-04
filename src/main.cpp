@@ -64,6 +64,7 @@ float inhale_start = 0.0; // will be set by the homing operation
 enum State_t {
     HOMING,
     IDLE,
+    INHALE_NEXT,
     INHALE,
     EXHALE,
     FAILED_HOMING,
@@ -345,6 +346,18 @@ void set_speed_factors(float volume, uint16_t bpm) {
   stepper.setDecelerationInMillimetersPerSecondPerSecond(accel);
 }
 
+/**
+ * @brief Callback for releaseEmergencyStop(). Gets the piston to inhale_start,
+ * then sets state to INHALE_NEXT, so that no matter what stroke we were in when
+ * emergencyStop() was called (INHALE or EXHALE), it will always go to INHALE next.
+ * (Per discussion btwn BAS and FG May 4, 2022.)
+ */
+
+void emx_release_callback() {
+  stepper.setTargetPositionInMillimeters(inhale_start);
+  state = INHALE_NEXT;
+}
+
 // ************************ SETUP() ********************************** //
 
 void setup() {
@@ -391,6 +404,7 @@ void setup() {
   else {
     Serial.println("Stepper failed to start in Core 0");
   }
+  stepper.registerEmergencyStopReleasedCallback(emx_release_callback);
   delay(1000);
   
 } // setup;
@@ -481,7 +495,13 @@ void loop() {
       delay(100);
     }
     break;
-  }  
+  }
+
+  case INHALE_NEXT: {
+    Serial.println("Case INHALE_NEXT"); // for breaking out of an emergencyStop()
+    state = INHALE;
+    break;
+  }
 
   case INHALE: {
     Serial.println("Case INHALE");
