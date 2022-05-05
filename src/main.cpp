@@ -383,9 +383,9 @@ void setup() {
   co2_knob.setFilter(1023);
   co2_knob.setCount(CO2_KNOB_START_VAL * 100); // set the initially-displayed CO2 duration (20 * 100; will be divided by 100 for display)
 
-  attachInterrupt(co2_btn_pin, co2_btn_isr, HIGH);  // BAS: Forrest: I know this SHOULD be LOW, but it doesn't work with my encoders. HIGH does.
-  attachInterrupt(pause_btn_pin, pause_btn_isr, HIGH); // BAS: Forrest: Ditto.
-  attachInterrupt(home_btn_pin, home_btn_isr, HIGH);   // BAS: Forrest: Ditto
+  attachInterrupt(co2_btn_pin, co2_btn_isr, FALLING);
+  attachInterrupt(pause_btn_pin, pause_btn_isr, FALLING);
+  attachInterrupt(home_btn_pin, home_btn_isr, FALLING);
 
   Heltec.begin(true, false, true);
   Heltec.display->clear();
