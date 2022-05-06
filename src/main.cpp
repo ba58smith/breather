@@ -666,10 +666,7 @@ void loop() {
     delay(5000);
     update_oled_calibrate("CALIBRATE HOME SWTCH");
     co2_btn_action = NO_ACTION; // changes to ENABLE at end of whole calibration process
-    uint8_t small_move_new_val = 0;
-    int8_t small_move_direction = 0;
-    uint8_t big_move_new_val = 0;
-    int8_t big_move_direction = 0;
+    uint8_t cnt = 0;
     int16_t next_move = 0;
     float cumulative_mm_moved = 0.0;
     bool big_moves_allowed = true;
@@ -704,10 +701,10 @@ void loop() {
       */
       // get value from co2_encoder - if it's > 0, move 1mm away from switch (positive), if < 0, move 1mm towards (negative)
       // don't get value again until that move has finished
-      small_move_new_val = co2_knob.getCount();
-      if (small_move_new_val != 0) { // knob has moved - don't care how much, only the direction
-        small_move_direction = small_move_new_val > 0 ? 1 : -1; // Forrest - make sure the direction is correct after a twist
-        next_move = small_move_direction * 1;
+      //small_move_new_val = co2_knob.getCount();
+      cnt = co2_knob.getCount();
+      if (cnt != 0) { // knob has moved - don't care how much, only the direction
+        next_move = cnt > 0 ? 1 : -1; // 1mm or -1mm // Forrest - make sure the direction is correct after a twist
         stepper.moveRelativeInMillimeters(next_move); // "Relative" is critical here!
         cumulative_mm_moved += next_move;
         Serial.println("cumulative_mm_moved = " + String(cumulative_mm_moved));
@@ -715,10 +712,9 @@ void loop() {
       }
       // get value from vol_encoder - if it's > 0, move 25mm away from switch (positive), if < 0, move 25mm towards (negative)
       // don't get value again until that move has finished
-      big_move_new_val = volume_knob.getCount();
-      if (big_moves_allowed && big_move_new_val != 0) { // knob has moved - don't care how much, only the direction
-        big_move_direction = big_move_new_val > 0 ? 1 : -1; // Forrest - make sure the direction is correct after a twist
-        next_move = big_move_direction * 25;
+      cnt = volume_knob.getCount();
+      if (big_moves_allowed && cnt != 0) { // knob has moved - don't care how much, only the direction
+        next_move = cnt > 0 ? 25 : -25; // 25mm or -25mm Forrest - make sure the direction is correct after a twist
         stepper.setTargetPositionRelativeInMillimeters(next_move); // "Relative" is critical here!
         cumulative_mm_moved += next_move;
         Serial.println("cumulative_mm_moved = " + String(cumulative_mm_moved));
@@ -742,10 +738,7 @@ void loop() {
   case CALIBRATE_INHALE_START_POS: {
     Serial.println("Case CALIBRATE_INHALE_START_POS");
     update_oled_calibrate("CALIB INHALE STRT_POS", "CO2 knob moves 1mm", "TVL knob moves 15mm");
-    uint8_t small_move_new_val = 0;
-    int8_t small_move_direction = 0;
-    uint8_t big_move_new_val = 0;
-    int8_t big_move_direction = 0;
+    uint8_t cnt = 0;
     int16_t next_move = 0;
     float cumulative_mm_moved = 0.0;
     bool big_moves_allowed = true;
@@ -814,10 +807,9 @@ void loop() {
       */
       // get value from co2_encoder - if it's > 0, move 1mm away from switch (positive), if < 0, move 1mm towards (negative)
       // don't get value again until that move has finished
-      small_move_new_val = co2_knob.getCount();
-      if (small_move_new_val != 0) { // knob has moved - don't care how much, only the direction
-        small_move_direction = small_move_new_val > 0 ? 1 : -1; // Forrest - make sure the direction is correct after a twist
-        next_move = small_move_direction * 1;
+      cnt = co2_knob.getCount();
+      if (cnt != 0) { // knob has moved - don't care how much, only the direction
+        next_move = cnt > 0 ? 1 : -1; // 1mm or -1mm Forrest - make sure the direction is correct after a twist
         stepper.moveRelativeInMillimeters(next_move); // "Relative" is critical here!
         cumulative_mm_moved += next_move;
         Serial.println("cumulative_mm_moved = " + String(cumulative_mm_moved));
@@ -825,10 +817,9 @@ void loop() {
       }
       // get value from vol_encoder - if it's > 0, move 25mm away from switch (positive), if < 0, move 25mm towards (negative)
       // don't get value again until that move has finished
-      big_move_new_val = volume_knob.getCount();
-      if (big_moves_allowed && big_move_new_val != 0) { // knob has moved - don't care how much, only the direction
-        big_move_direction = big_move_new_val > 0 ? 1 : -1; // Forrest - make sure the direction is correct after a twist
-        next_move = big_move_direction * 15;
+      cnt = volume_knob.getCount();
+      if (big_moves_allowed && cnt != 0) { // knob has moved - don't care how much, only the direction
+        next_move = cnt > 0 ? 15 : -15; // Forrest - make sure the direction is correct after a twist
         stepper.setTargetPositionRelativeInMillimeters(next_move); // "Relative" is critical here!
         cumulative_mm_moved += next_move;
         Serial.println("cumulative_mm_moved = " + String(cumulative_mm_moved));
