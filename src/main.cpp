@@ -701,7 +701,6 @@ void loop() {
       */
       // get value from co2_encoder - if it's > 0, move 1mm away from switch (positive), if < 0, move 1mm towards (negative)
       // don't get value again until that move has finished
-      //small_move_new_val = co2_knob.getCount();
       cnt = co2_knob.getCount();
       if (cnt != 0) { // knob has moved - don't care how much, only the direction
         next_move = cnt > 0 ? 1 : -1; // 1mm or -1mm // Forrest - make sure the direction is correct after a twist
