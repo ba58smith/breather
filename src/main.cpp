@@ -705,6 +705,7 @@ void loop() {
       if (cnt != 0) { // knob has moved - don't care how much, only the direction
         next_move = cnt > 0 ? 1 : -1; // 1mm or -1mm // Forrest - make sure the direction is correct after a twist
         stepper.setTargetPositionRelativeInMillimeters(next_move); // "Relative" is critical here!
+        while (!stepper.motionComplete()); // do nothing until the move is complete
         cumulative_mm_moved += next_move;
         Serial.println("cumulative_mm_moved = " + String(cumulative_mm_moved));
         co2_knob.setCount(0); // reset for next knob turn
@@ -810,6 +811,7 @@ void loop() {
       if (cnt != 0) { // knob has moved - don't care how much, only the direction
         next_move = cnt > 0 ? 1 : -1; // 1mm or -1mm Forrest - make sure the direction is correct after a twist
         stepper.setTargetPositionRelativeInMillimeters(next_move); // "Relative" is critical here!
+        while (!stepper.motionComplete()); // do nothing until the move is complete
         cumulative_mm_moved += next_move;
         Serial.println("cumulative_mm_moved = " + String(cumulative_mm_moved));
         co2_knob.setCount(0); // reset for next knob turn
