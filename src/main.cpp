@@ -672,8 +672,8 @@ void loop() {
         last = position;
       }
     }
-    update_oled_calibrate("CALIB INHALE STRT_POS", "", (String(HUGE_CALIB_MOVE_IN_MM, 0) + "mm move underway"),
-                          "", "");
+    update_oled_calibrate("CALIB INHALE STRT_POS", "", (String(HUGE_CALIB_MOVE_IN_MM) + "mm move underway"),
+                          "", "No input while moving");
     delay(3000); // to leave the msg on the OLED for a few second
     update_oled_calibrate("CALIBRATE");
     stepper.setCurrentPositionInMillimeters(0); // the point where the home switch activates
@@ -687,6 +687,8 @@ void loop() {
     stepper.setDecelerationInMillimetersPerSecondPerSecond(25);
     volume_knob.setCount(HUGE_CALIB_MOVE_IN_MM);
     last = HUGE_CALIB_MOVE_IN_MM;
+    Serial.println("Huge move complete: position: " + String(stepper.getCurrentPositionInMillimeters()));
+    delay(3000); // leave message on OLED for a bit
     while (digitalRead(co2_btn_pin) == HIGH) {
       position = (volume_knob.getCount());
       if (position != last) {
@@ -701,7 +703,7 @@ void loop() {
     EEPROM.write(0, MAX_STROKE_LENGTH_IN_MM);
     stepper.setCurrentPositionInMillimeters(0);
     volume_knob.setCount(VOL_KNOB_START_VAL * 100);
-    state = HOMING;
+    state = IDLE;
     break;
   } // end CALIBRATE
 
