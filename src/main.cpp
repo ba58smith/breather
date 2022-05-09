@@ -62,7 +62,7 @@ bool btn_state_changed = false; // triggers update_oled_values()
 
 // define all pins
 const uint8_t pause_btn_pin = 35; // the pushbutton on the bpm encoder
-const uint8_t home_btn_pin = 38; // the pushbutton on the volume encoder
+const uint8_t home_btn_pin = 38; // the pushbutton on the volume encoder BAS: s/b 38 - I use 5 b/c of HW issues
 const uint8_t co2_btn_pin = 19; // the pushbutton on the co2 encoder
 const uint8_t co2_valve_pin = 17; // opens / closes the co2 valve
 const uint8_t bpm_CLK_pin = 39; // encoder A pins are CLK
@@ -669,16 +669,29 @@ void loop() {
     stepper.setDecelerationInMillimetersPerSecondPerSecond(25);
     stepper.setCurrentPositionInMillimeters(0);
     volume_knob.setCount(0);
+    bpm_knob.setCount(0);
     int16_t position = 0;
-    int16_t last = 0;
+    int16_t vol_pos = 0;
+    int16_t last_vol_pos = 0;
+    int16_t bpm_pos = 0;
+    int16_t last_bpm_pos = 0;
     delay(1000);
     while (digitalRead(co2_btn_pin) == HIGH) { // move the piston until it's right where the home switch activates
-      position = (volume_knob.getCount());
-      if (position != last) {
-        Serial.println("position cnt " + String(position));
+      vol_pos = (volume_knob.getCount());
+      if (vol_pos != last_vol_pos) {
+        position += (vol_pos - last_vol_pos);
+        Serial.println("position count " + String(position));
         stepper.setTargetPositionInMillimeters(position);
         while (!stepper.motionComplete());
-        last = position;
+        last_vol_pos = vol_pos;
+      }
+      bpm_pos = (bpm_knob.getCount());
+      if (bpm_pos != last_bpm_pos) {
+        position += (25 * (bpm_pos - last_bpm_pos)); // 25mm per twist
+        Serial.println("position count " + String(position));
+        stepper.setTargetPositionInMillimeters(position);
+        while (!stepper.motionComplete());
+        last_bpm_pos = bpm_pos;
       }
     }
     update_oled_calibrate("CALIB INHALE STRT_POS", "", (String(HUGE_CALIB_MOVE_IN_MM) + "mm move underway"),
@@ -692,18 +705,26 @@ void loop() {
     stepper.setSpeedInMillimetersPerSecond(25);
     stepper.setAccelerationInMillimetersPerSecondPerSecond(25);
     stepper.setDecelerationInMillimetersPerSecondPerSecond(25);
-    volume_knob.setCount(HUGE_CALIB_MOVE_IN_MM);
-    last = HUGE_CALIB_MOVE_IN_MM;
+    position = HUGE_CALIB_MOVE_IN_MM;
     Serial.println("Huge move complete: position: " + String(stepper.getCurrentPositionInMillimeters()));
     update_oled_calibrate("CALIB INHALE STRT_POS");
     delay(3000); // leave message on OLED for a bit
     while (digitalRead(co2_btn_pin) == HIGH) {
-      position = (volume_knob.getCount());
-      if (position != last) {
-        Serial.println("position cnt " + String(position));
+      vol_pos = (volume_knob.getCount());
+      if (vol_pos != last_vol_pos) {
+        position += (vol_pos - last_vol_pos);
+        Serial.println("position count " + String(position));
         stepper.setTargetPositionInMillimeters(position);
         while (!stepper.motionComplete());
-        last = position;
+        last_vol_pos = vol_pos;
+      }
+      bpm_pos = (bpm_knob.getCount());
+      if (bpm_pos != last_bpm_pos) {
+        position += (25 * (bpm_pos - last_bpm_pos));
+        Serial.println("position count " + String(position));
+        stepper.setTargetPositionInMillimeters(position);
+        while (!stepper.motionComplete());
+        last_bpm_pos = bpm_pos;
       }
     }
     MAX_STROKE_LENGTH_IN_MM = (int16_t)stepper.getCurrentPositionInMillimeters();
@@ -714,10 +735,10 @@ void loop() {
     EEPROM.commit();
     delay(100);
     stepper.setCurrentPositionInMillimeters(0);
-    volume_knob.setCount(VOL_KNOB_START_VAL * 100);
+    volume_knob.setCount(VOL_KNOB_START_VAL * 10);
+    bpm_knob.setCount(BPM_KNOB_START_VAL);
     state = IDLE;
-    Serial.println("Value written to EEPROM on next line:"); // BAS: remove this when done testing
-    Serial.println(String(read_int_from_eeprom(0)));
+    Serial.println("Value written to EEPROM: " + String(read_int_from_eeprom(0))); // BAS: remove this when done testing
     break;
   } // end CALIBRATE
 
