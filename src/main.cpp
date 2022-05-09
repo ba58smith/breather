@@ -3,7 +3,6 @@
 #include <Arduino.h>
 #include <ESP32Encoder.h>
 #include <math.h>
-//#include <Preferences.h> // this didn't work
 #include <EEPROM.h>
 #include <heltec.h>
 #include <ESP_FlexyStepper.h>
@@ -11,8 +10,8 @@
 
 #define VOLUME_TO_MM_CONVERSION 33.3 // 33.3 is according to spec document
 #define ACTUAL_LENGTH_OF_SCREW_IN_MM 275.0 // this is the actual length
-float MAX_STROKE_LENGTH_IN_MM  = 225.0; // get from EEPROM if it's there; if not, use this. Used in HOMING, set in CALIBRATE_INHALE_START_POS
-#define HUGE_CALIB_MOVE_IN_MM 200.0 // initial move away from limit switch in CALIBRATE_INHALE_START_POS
+float MAX_STROKE_LENGTH_IN_MM  = 225.0; // get from EEPROM if it's there; if not, use this. Used in HOMING, set in CALIBRATE
+#define HUGE_CALIB_MOVE_IN_MM 250 // initial move away from limit switch in CALIBRATE
 #define EEPROM_SIZE 4
 
 // knob display min, max, and starting values
@@ -48,13 +47,11 @@ enum State_t {
     INHALE,
     EXHALE,
     FAILED_HOMING,
-    CALIBRATE_SWITCH,
-    CALIBRATE_INHALE_START_POS
+    CALIBRATE
 };
 
 bool home_btn_interrupt_fired = false;
 bool pause_btn_interrupt_fired = false;
-bool co2_btn_interrupt_fired = false; // used in CALIBRATE states
 Btn_Action_t pause_btn_action = RESUME; // PAUSE or RESUME - start w/ RESUME (at end of HOMING)
 bool emx_stop_in_effect = false; // set to true when emergencyStop() is called
 bool co2_enabled = false;
@@ -81,7 +78,7 @@ const uint8_t limit_switch_data_pin = 13;
 float motorStepsPerMillimeter = 25; // verified on Jim's test jig
 float inhale_start = 0.0; // will be set by the homing operation
 
-State_t state = CALIBRATE_SWITCH; // the first thing it will do after setup(), IF co2_btn_pin is LOW
+State_t state; // set at the very end of setup()
 float current_volume = 0.0;
 uint32_t current_bpm = 0;
 float current_co2_duration = 0.0;
@@ -145,10 +142,7 @@ static IRAM_ATTR void co2_btn_isr() {
   unsigned long interrupt_time = millis();
   // If interrupts come faster than 1000 ms, assume it's a bounce and ignore
   if (interrupt_time - last_interrupt_time > 1000) {
-    if (co2_btn_action == NO_ACTION) { // CALIBRATE states
-      co2_btn_interrupt_fired = true;
-    }
-    else if (co2_btn_action == DISABLE) {
+    if (co2_btn_action == DISABLE) {
       close_co2_valve();
       co2_enabled = false;
       co2_btn_action = ENABLE; // set for next button push
@@ -168,8 +162,6 @@ ESP_FlexyStepper stepper;
 ESP32Encoder bpm_knob;
 ESP32Encoder volume_knob;
 ESP32Encoder co2_knob;
-
-// Preferences preferences; // this didn't work
 
 /**
  * @brief Draws the "header" for the main screen that display values and states.
@@ -258,7 +250,7 @@ void update_oled_rmv_max() {
  * @brief Updates the screen for the various phases of Calibration
  */
 
-void update_oled_calibrate(String header = "CALIBRATE HOME SWTCH", String ln_2 = "CO2 knob moves 1mm", String ln_3 = "TVL knob moves 25mm", 
+void update_oled_calibrate(String header = "CALIBRATE HOME SWTCH", String ln_2 = "TVL knob moves 1mm", String ln_3 = "RMV knob moves 25mm", 
                            String ln_4 = "CW = away from you", String ln_5 = "Push CO2 when done") {
   Heltec.display->setColor(BLACK);
   Heltec.display->fillRect(0, 0, bottomcornerX, bottomcornerY);
@@ -419,7 +411,6 @@ void setup() {
   digitalWrite(co2_valve_pin, HIGH); // get the valve closed right awway.
   Serial.begin(115200);
 
-  // preferences.begin("app", false); // false means read/write is enabled - this didn't work
   EEPROM.begin(EEPROM_SIZE);
 
   // Enable the weak pull up resistors
@@ -457,8 +448,6 @@ void setup() {
   }
   stepper.registerEmergencyStopReleasedCallback(emx_release_callback);
   delay(500);
-  // float max_stroke_from_memory = preferences.getFloat("max_stroke_mm", 0.0); // this didn't work
-  // There's a problem with the write, or the read, or both, but the above line always returns 0
   float max_stroke_from_memory = EEPROM.read(0);
   Serial.println("value retrieved from EEPROM = " + String(max_stroke_from_memory, 0));
   if (digitalRead(co2_btn_pin) == HIGH && max_stroke_from_memory > 0.0) { // normal startup
@@ -466,9 +455,9 @@ void setup() {
     MAX_STROKE_LENGTH_IN_MM = max_stroke_from_memory;
   }
   else {
-    state = CALIBRATE_SWITCH;
+    state = CALIBRATE;
     if (max_stroke_from_memory == 0.0) {
-      update_oled_calibrate("No prior calibration", "detected. Going to", "calibration now.", "", "");
+      update_oled_calibrate("No prior calibration", "detected.", "", "Going to calibration", "now.");
       delay(3000); // to leave message on the OLED for a few seconds
     }
   }
@@ -660,186 +649,61 @@ void loop() {
     break; // break out of the switch() and start again at the top with the new state: INHALE or HOMING 
   }  // end case EXHALE
 
-  case CALIBRATE_SWITCH: {
-    Serial.println("Case CALIBRATE_SWITCH");
+  case CALIBRATE:
+  {
+    Serial.println("Case CALIBRATE");
     update_oled_calibrate("RELEASE CO2 BUTTON", "", "RELEASE CO2 BUTTON", "", "RELEASE CO2 BUTTON");
     delay(5000);
-    update_oled_calibrate("CALIBRATE HOME SWTCH");
-    co2_btn_action = NO_ACTION; // changes to ENABLE at end of whole calibration process
-    uint8_t cnt = 0;
-    int16_t next_move = 0;
-    float cumulative_mm_moved = 0.0;
-    bool big_moves_allowed = true;
-    co2_knob.setCount(0);
-    volume_knob.setCount(0);
-    stepper.setSpeedInMillimetersPerSecond(20); // move very slowly during calibration
+    update_oled_calibrate("CALIBRATE");
+    stepper.setSpeedInMillimetersPerSecond(25);
     stepper.setAccelerationInMillimetersPerSecondPerSecond(25);
     stepper.setDecelerationInMillimetersPerSecondPerSecond(25);
-    co2_btn_interrupt_fired = false;
-    while (state == CALIBRATE_SWITCH) {
-      if (co2_btn_interrupt_fired) { // done calibrating the switch
-        co2_btn_interrupt_fired = false;
-        stepper.setCurrentPositionInMillimeters(0.0); // needed by CALIBRATE_INHALE_START_POS 
-        update_oled_calibrate("SWITCH CALIBRATION", "COMPLETE.", "Now calibrate the", "INHALE START", "POSITION.");
-        delay(3000); // to leave the msg on the OLED for a few seconds
-        state = CALIBRATE_INHALE_START_POS;
-        break;
-      }
-      /*
-      // disallow big moves if we've already moved 90% of the max stroke length in either direction - something's wrong
-      if (cumulative_mm_moved < (-0.9 * MAX_STROKE_LENGTH_IN_MM) || cumulative_mm_moved > (0.9 * MAX_STROKE_LENGTH_IN_MM)) {
-        big_moves_allowed = false;
-        update_oled_calibrate("CALIBRATE HOME SWTCH", "CO2 knob moves 1mm", "Small moves only now");
-      }
-      // re-enable big moves if appropriate
-      if (big_moves_allowed == false) {
-        if (cumulative_mm_moved > (-0.9 * MAX_STROKE_LENGTH_IN_MM) && cumulative_mm_moved < (0.9 * MAX_STROKE_LENGTH_IN_MM)) {
-          big_moves_allowed = true;
-          update_oled_calibrate("CALIBRATE HOME SWTCH");
-        }
-      }
-      */
-      // get value from co2_encoder - if it's > 0, move 1mm away from switch (positive), if < 0, move 1mm towards (negative)
-      // don't get value again until that move has finished
-      cnt = co2_knob.getCount();
-      if (cnt != 0) { // knob has moved - don't care how much, only the direction
-        next_move = cnt > 0 ? 1 : -1; // 1mm or -1mm // Forrest - make sure the direction is correct after a twist
-        stepper.setTargetPositionRelativeInMillimeters(next_move); // "Relative" is critical here!
-        while (!stepper.motionComplete()); // do nothing until the move is complete
-        cumulative_mm_moved += next_move;
-        Serial.println("cumulative_mm_moved = " + String(cumulative_mm_moved));
-        co2_knob.setCount(0); // reset for next knob turn
-      }
-      // get value from vol_encoder - if it's > 0, move 25mm away from switch (positive), if < 0, move 25mm towards (negative)
-      // don't get value again until that move has finished
-      cnt = volume_knob.getCount();
-      if (big_moves_allowed && cnt != 0) { // knob has moved - don't care how much, only the direction
-        next_move = cnt > 0 ? 25 : -25; // 25mm or -25mm Forrest - make sure the direction is correct after a twist
-        stepper.setTargetPositionRelativeInMillimeters(next_move); // "Relative" is critical here!
-        cumulative_mm_moved += next_move;
-        Serial.println("cumulative_mm_moved = " + String(cumulative_mm_moved));
-        update_oled_calibrate("", "No input while moving", "", "", "");
-        while (!stepper.motionComplete()) {
-          if (digitalRead(limit_switch_data_pin) == LOW) { // too close to switch!
-            stepper.emergencyStop(false);
-            // break out of this CALIBRATE_SWITCH and start it again
-            update_oled_calibrate("CALIBRATE HOME SWTCH", "Too close to home", "switch. Restarting",  "calibration process.", "");
-            delay(5000); // to leave message on the OLED for a few seconds
-            break; // state stays at CALIBRATE_SWITCH
-          }
-        }
-        volume_knob.setCount(0); // reset for next knob turn
-        update_oled_calibrate("CALIBRATE HOME SWTCH");
-      } // if big_moves_allowed 
-    } // while(state == CALIBRATE_SWITCH)
-    break;
-  } // end case CALIBRATE_SWITCH
-
-  case CALIBRATE_INHALE_START_POS: {
-    Serial.println("Case CALIBRATE_INHALE_START_POS");
-    update_oled_calibrate("CALIB INHALE STRT_POS", "CO2 knob moves 1mm", "TVL knob moves 15mm");
-    uint8_t cnt = 0;
-    int16_t next_move = 0;
-    float cumulative_mm_moved = 0.0;
-    bool big_moves_allowed = true;
-    bool huge_move_complete = false;
-    co2_knob.setCount(0);
+    stepper.setCurrentPositionInMillimeters(0);
     volume_knob.setCount(0);
-    stepper.setSpeedInMillimetersPerSecond(20); // move very slowly during calibration
+    int16_t position = 0;
+    int16_t last = 0;
+    delay(1000);
+    while (digitalRead(co2_btn_pin) == HIGH) { // move the piston until it's right where the home switch activates
+      position = (volume_knob.getCount());
+      if (position != last) {
+        Serial.println("position cnt " + String(position));
+        stepper.setTargetPositionInMillimeters(position);
+        while (!stepper.motionComplete());
+        last = position;
+      }
+    }
+    update_oled_calibrate("CALIB INHALE STRT_POS", "", (String(HUGE_CALIB_MOVE_IN_MM, 0) + "mm move underway"),
+                          "", "");
+    delay(3000); // to leave the msg on the OLED for a few second
+    update_oled_calibrate("CALIBRATE");
+    stepper.setCurrentPositionInMillimeters(0); // the point where the home switch activates
+    stepper.setSpeedInMillimetersPerSecond(50);
+    stepper.setAccelerationInMillimetersPerSecondPerSecond(75);
+    stepper.setDecelerationInMillimetersPerSecondPerSecond(75);
+    stepper.setTargetPositionInMillimeters(HUGE_CALIB_MOVE_IN_MM); // move a lot closer to the inhale beginning point
+    while (!stepper.motionComplete());
+    stepper.setSpeedInMillimetersPerSecond(25);
     stepper.setAccelerationInMillimetersPerSecondPerSecond(25);
     stepper.setDecelerationInMillimetersPerSecondPerSecond(25);
-    while (state == CALIBRATE_INHALE_START_POS) {
-      // make the HUGE move here: HUGE_CALIB_MOVE_IN_MM away from the calibrated limit switch position, which is currently 0.0
-      if (!huge_move_complete) {
-        stepper.setTargetPositionInMillimeters(HUGE_CALIB_MOVE_IN_MM);
-        cumulative_mm_moved += HUGE_CALIB_MOVE_IN_MM;
-        update_oled_calibrate("CALIB INHALE STRT_POS", (String(HUGE_CALIB_MOVE_IN_MM, 0) + "mm move underway"),
-                            "No input while moving", "", "PUSH CO2 for EMX STOP");
-        co2_btn_interrupt_fired = false;
-        while (!stepper.motionComplete()) {
-          if (co2_btn_interrupt_fired) {
-            co2_btn_interrupt_fired = false;
-            stepper.emergencyStop(false);
-            update_oled_calibrate("Emx Stop button pushed", "", "Calibration process.", "will start over now.", "");
-            delay(3000); // to leave the message on the OLED for a few seconds
-            state = CALIBRATE_SWITCH;
-            break;
-          }
-        } // end of huge move
-        Serial.println("cumulative_mm_moved = " + String(cumulative_mm_moved));
-        huge_move_complete = true;
+    volume_knob.setCount(HUGE_CALIB_MOVE_IN_MM);
+    last = HUGE_CALIB_MOVE_IN_MM;
+    while (digitalRead(co2_btn_pin) == HIGH) {
+      position = (volume_knob.getCount());
+      if (position != last) {
+        Serial.println("position cnt " + String(position));
+        stepper.setTargetPositionInMillimeters(position);
+        while (!stepper.motionComplete());
+        last = position;
       }
-      update_oled_calibrate("CALIB INHALE STRT_POS", "CO2 knob moves 1mm", "TVL knob moves 15mm");         
-      if (co2_btn_interrupt_fired) { // done with calibration - piston is where we want for inhale_start
-        co2_btn_interrupt_fired = false;
-        update_oled_calibrate("CALIB INHALE STRT_POS", "Calibration complete.", "Saving to memory,", "then going to IDLE", "");
-        MAX_STROKE_LENGTH_IN_MM = stepper.getCurrentPositionInMillimeters();
-        // write this value to permanent memory
-        // preferences.putFloat("max_length_mm", MAX_STROKE_LENGTH_IN_MM);// this didn't work
-        EEPROM.write(0, MAX_STROKE_LENGTH_IN_MM);
-        delay(500);
-        EEPROM.commit();
-        // preferences.end(); // write to memory // this didn't work
-        delay(500);
-        Serial.println("Value of MAX_STROKE_LENGTH_IN_MM from memory: " + String(EEPROM.read(0)));
-        delay(3000); // BAS: delete this and the above line once read/write is working
-        stepper.setCurrentPositionInMillimeters(0.0); // where all inhale strokes will begin
-        inhale_start = 0.0;
-        delay(3000); // to leave the last message on the OLED for a few seconds
-        co2_btn_action = ENABLE;
-        state = IDLE; // skip HOMING because CALIBRATE_INHALE_START_POS does the same thing as HOMING
-        break;
-      }
-      /*
-      // disallow big moves if we've already moved 90% of the max stroke length in either direction - something's wrong
-      if (cumulative_mm_moved <= (-0.9 * MAX_STROKE_LENGTH_IN_MM) || cumulative_mm_moved >= (0.9 * MAX_STROKE_LENGTH_IN_MM)) {
-        big_moves_allowed = false;
-        update_oled_calibrate("CALIB INHALE STRT_POS", "CO2 knob moves 1mm", "Small moves only now");
-      }
-      // re-enable big moves if appropriate
-      if (big_moves_allowed == false) {
-        if (cumulative_mm_moved > (-0.9 * MAX_STROKE_LENGTH_IN_MM) && cumulative_mm_moved < (0.9 * MAX_STROKE_LENGTH_IN_MM)) {
-          big_moves_allowed = true;
-          update_oled_calibrate("CALIB INHALE STRT_POS", "CO2 knob moves 1mm", "TVL knob moves 15mm");
-        delay(3000); // keep message on OLED for a few seconds BAS: add this to end of update_oled_calibrate?
-        }
-      }
-      */
-      // get value from co2_encoder - if it's > 0, move 1mm away from switch (positive), if < 0, move 1mm towards (negative)
-      // don't get value again until that move has finished
-      cnt = co2_knob.getCount();
-      if (cnt != 0) { // knob has moved - don't care how much, only the direction
-        next_move = cnt > 0 ? 1 : -1; // 1mm or -1mm Forrest - make sure the direction is correct after a twist
-        stepper.setTargetPositionRelativeInMillimeters(next_move); // "Relative" is critical here!
-        while (!stepper.motionComplete()); // do nothing until the move is complete
-        cumulative_mm_moved += next_move;
-        Serial.println("cumulative_mm_moved = " + String(cumulative_mm_moved));
-        co2_knob.setCount(0); // reset for next knob turn
-      }
-      // get value from vol_encoder - if it's > 0, move 25mm away from switch (positive), if < 0, move 25mm towards (negative)
-      // don't get value again until that move has finished
-      cnt = volume_knob.getCount();
-      if (big_moves_allowed && cnt != 0) { // knob has moved - don't care how much, only the direction
-        next_move = cnt > 0 ? 15 : -15; // Forrest - make sure the direction is correct after a twist
-        stepper.setTargetPositionRelativeInMillimeters(next_move); // "Relative" is critical here!
-        cumulative_mm_moved += next_move;
-        Serial.println("cumulative_mm_moved = " + String(cumulative_mm_moved));
-        update_oled_calibrate("No input while moving");
-        while (!stepper.motionComplete()) {
-          if (digitalRead(limit_switch_data_pin) == LOW) { // too close to switch!
-            stepper.emergencyStop(false);
-            // break out of this and start CALIBRATE_SWITCH again
-            update_oled_calibrate("Too close to home", "switch. Restarting",  "calibration process.");
-            state = CALIBRATE_SWITCH;
-            break;
-          }
-        }
-        volume_knob.setCount(0); // reset for next knob turn
-        update_oled_calibrate("Select next move");
-      } // if big_moves_allowed 
-    } // while(state == CALIBRATE_INHALE_START_POS)
+    }
+    MAX_STROKE_LENGTH_IN_MM = stepper.getCurrentPositionInMillimeters();
+    // write this value to permanent memory
+    EEPROM.write(0, MAX_STROKE_LENGTH_IN_MM);
+    stepper.setCurrentPositionInMillimeters(0);
+    volume_knob.setCount(VOL_KNOB_START_VAL * 100);
+    state = HOMING;
     break;
-  } // end case CALIBRATE_INHALE_START_POS
+  } // end CALIBRATE
 
  } // end switch()
 } // end loop()
