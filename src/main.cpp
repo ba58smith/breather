@@ -76,7 +76,7 @@ const uint8_t motor_pulse_pin = 27;
 const uint8_t limit_switch_data_pin = 13;
 
 float motorStepsPerMillimeter = 25; // verified on Jim's test jig
-float inhale_start = 0.0; // will be set by the homing operation
+float inhale_start = 0.0; // after HOMING or CALIBRATE, it's 0.0, and it's not used until EXHALE
 
 State_t state; // set at the very end of setup()
 float current_volume = 0.0;
@@ -390,7 +390,7 @@ void set_speed_factors(float volume, uint16_t bpm) {
 }
 
 /**
- * @brief Callback for releaseEmergencyStop(). Gets the piston to inhale_start,
+ * @brief Callback for releaseEmergencyStop(). Gets the piston to inhale_start (0.0),
  * then sets state to INHALE_NEXT, so that no matter what stroke we were in when
  * emergencyStop() was called (INHALE or EXHALE), it will always go to INHALE next.
  */
@@ -510,9 +510,10 @@ void loop() {
     Serial.println("Should now be at the starting point for every inhale stroke");
     Serial.println("Actual current position is " + String(stepper.getCurrentPositionInMillimeters()));
     // now we should be at the point where every inhale stroke begins, and the point where every
-    // exhale stroke returns to. Set it to 0, and save it as inhale_start, to be used by the exhale stroke.
-    stepper.setCurrentPositionInMillimeters(0.0);
-    inhale_start = 0.0;
+    // exhale stroke returns to. Set it to 0.0.
+    // The following was here, and was working. Suddenly, it wasn't working, so it was moved to
+    // the top of INHALE. (The motor would occasionally make a very large move again, at this point.)
+    // stepper.setCurrentPositionInMillimeters(0.0);
     }
     if (state == HOMING) {
       state = IDLE;
@@ -566,7 +567,10 @@ void loop() {
 
   case INHALE: {
     Serial.println("Case INHALE");
-    // begin the inhale stroke - show oled display
+    // record the current position (immediately after HOMING or CALIBRATE) as 0.0. It was at the end of HOMING, but
+    // that resulted in the occasional extra movement - something stuck in the task queue, maybe? It works here.
+    stepper.setCurrentPositionInMillimeters(0.0);
+    get_encoder_values();
     set_speed_factors(current_volume, current_bpm);
     stepper.setTargetPositionInMillimeters(-1 * current_volume * VOLUME_TO_MM_CONVERSION);
     while (!stepper.motionComplete() || emx_stop_in_effect) {
@@ -612,7 +616,7 @@ void loop() {
     break; // break out of the switch() and start again at the top with the new state: EXHALE or HOMING
   }
 
-  case EXHALE: { // move back to the inhale_start position.
+  case EXHALE: { // move back to the inhale_start position (0.0)
     Serial.println("Case         EXHALE");
     stepper.setTargetPositionInMillimeters(inhale_start);
     co2_valve_opened = open_co2_valve(); // true if valve is enabled and duration is > 0.0
@@ -734,7 +738,7 @@ void loop() {
     delay(100);
     EEPROM.commit();
     delay(100);
-    stepper.setCurrentPositionInMillimeters(0);
+    stepper.setCurrentPositionInMillimeters(0.0);
     volume_knob.setCount(VOL_KNOB_START_VAL * 10);
     bpm_knob.setCount(BPM_KNOB_START_VAL);
     state = IDLE;
