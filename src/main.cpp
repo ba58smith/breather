@@ -220,11 +220,11 @@ void update_oled_failed_homing() {
   Heltec.display->setColor(WHITE);
   Heltec.display->setFont(ArialMT_Plain_10);
   String display_str = "Homing failed, piston";
-  Heltec.display->drawString(0, 20, display_str);
+  Heltec.display->drawString(1, 20, display_str);
   display_str = "position unknown. Check";
-  Heltec.display->drawString(0, 30, display_str);
+  Heltec.display->drawString(1, 30, display_str);
   display_str = "wiring or try HOME button.";
-  Heltec.display->drawString(0, 40, display_str);
+  Heltec.display->drawString(1, 40, display_str);
   Heltec.display->display();
 }
 
