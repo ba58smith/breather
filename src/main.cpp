@@ -449,8 +449,8 @@ void setup() {
   stepper.registerEmergencyStopReleasedCallback(emx_release_callback);
   delay(500);
   float max_stroke_from_memory = EEPROM.read(0);
-  Serial.println("value retrieved from EEPROM = " + String(max_stroke_from_memory, 0));
-  if (digitalRead(co2_btn_pin) == HIGH && max_stroke_from_memory > 0.0) { // normal startup
+  Serial.println("value retrieved from EEPROM = " + String(max_stroke_from_memory, 0)); //BAS: remove this after testing 
+  if (digitalRead(co2_btn_pin) == HIGH && max_stroke_from_memory > HUGE_CALIB_MOVE_IN_MM) { // normal startup w/ a valid value from EEPROM
     state = HOMING;
     MAX_STROKE_LENGTH_IN_MM = max_stroke_from_memory;
   }
@@ -490,21 +490,14 @@ void loop() {
     stepper.setTargetPositionInMillimeters(MAX_STROKE_LENGTH_IN_MM);
     while (!stepper.motionComplete()) {
       // BAS: monitor the PAUSE/RESUME buttons here? Forrest says YES
-      stepper.processMovement();
     }
     Serial.println("Should now be at the starting point for every inhale stroke");
+    Serial.println("Actual current position is " + String(stepper.getCurrentPositionInMillimeters()));
     // now we should be at the point where every inhale stroke begins, and the point where every
     // exhale stroke returns to. Set it to 0, and save it as inhale_start, to be used by the exhale stroke.
     stepper.setCurrentPositionInMillimeters(0.0);
     inhale_start = 0.0;
     }
-    // BAS: Forrest: Next 4 lines are only for when the ESP isn't connected to the machine or a logic analyzer
-    /*
-    stepper.setCurrentPositionInMillimeters(0.0);
-    inhale_start = 0.0;
-    homing_failed = false;
-    Serial.println("For test purposes, HOMING successful");
-    */
     if (state == HOMING) {
       state = IDLE;
     }
@@ -701,9 +694,14 @@ void loop() {
     MAX_STROKE_LENGTH_IN_MM = stepper.getCurrentPositionInMillimeters();
     // write this value to permanent memory
     EEPROM.write(0, MAX_STROKE_LENGTH_IN_MM);
+    delay(500);
+    EEPROM.commit();
+    delay(500);
     stepper.setCurrentPositionInMillimeters(0);
     volume_knob.setCount(VOL_KNOB_START_VAL * 100);
     state = IDLE;
+    Serial.println("Value written to EEPROM on next line:"); // BAS: remove this when done testing
+    Serial.println(String(EEPROM.read(0)));
     break;
   } // end CALIBRATE
 
