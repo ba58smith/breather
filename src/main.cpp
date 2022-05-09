@@ -10,9 +10,9 @@
 
 #define VOLUME_TO_MM_CONVERSION 33.3 // 33.3 is according to spec document
 #define ACTUAL_LENGTH_OF_SCREW_IN_MM 275.0 // this is the actual length
-float MAX_STROKE_LENGTH_IN_MM  = 225.0; // get from EEPROM if it's there; if not, use this. Used in HOMING, set in CALIBRATE
+int16_t MAX_STROKE_LENGTH_IN_MM  = 225; // get from EEPROM if it's there; if not, use this. Used in HOMING, set in CALIBRATE
 #define HUGE_CALIB_MOVE_IN_MM 250 // initial move away from limit switch in CALIBRATE
-#define EEPROM_SIZE 4
+#define EEPROM_SIZE 10
 
 // knob display min, max, and starting values
 const float VOL_KNOB_MIN_VAL = 1.0;
@@ -400,6 +400,22 @@ void emx_release_callback() {
   state = INHALE_NEXT;
 }
 
+/**
+ * @brief Needed to write MAX_STROKE_LENGTH_IN_MM to EEPROM, because
+ * EEPROM stores only bytes.
+ */
+void write_int_to_eeprom(uint8_t address, int16_t number) { 
+  EEPROM.write(address, number >> 8);
+  EEPROM.write(address + 1, number & 0xFF);
+}
+
+/**
+ * @brief Needed to read MAX_STROKE_LENGTH_IN_MM from EEPROM.
+ */
+int16_t read_int_from_eeprom(uint8_t address) {
+  return (EEPROM.read(address) << 8) + EEPROM.read(address + 1);
+}
+
 // ************************ SETUP() ********************************** //
 
 void setup() {
@@ -448,9 +464,9 @@ void setup() {
   }
   stepper.registerEmergencyStopReleasedCallback(emx_release_callback);
   delay(500);
-  float max_stroke_from_memory = EEPROM.read(0);
-  Serial.println("value retrieved from EEPROM = " + String(max_stroke_from_memory, 0)); //BAS: remove this after testing 
-  if (digitalRead(co2_btn_pin) == HIGH && max_stroke_from_memory > HUGE_CALIB_MOVE_IN_MM) { // normal startup w/ a valid value from EEPROM
+  int16_t max_stroke_from_memory = read_int_from_eeprom(0);
+  Serial.println("value retrieved from EEPROM = " + String(max_stroke_from_memory)); //BAS: remove this after testing 
+  if (digitalRead(co2_btn_pin) == HIGH && max_stroke_from_memory >= HUGE_CALIB_MOVE_IN_MM) { // normal startup w/ a valid value from EEPROM
     state = HOMING;
     MAX_STROKE_LENGTH_IN_MM = max_stroke_from_memory;
   }
@@ -487,7 +503,7 @@ void loop() {
     // positions farther from the limit switch are positive.
     // the piston is now at a position that's the closest it should ever get to the limit switch again,
     // so now move it to the desired position for the start of each inhale stroke - MAX_STROKE_LENGTH_IN_MM farther.
-    stepper.setTargetPositionInMillimeters(MAX_STROKE_LENGTH_IN_MM);
+    stepper.setTargetPositionInMillimeters((float)MAX_STROKE_LENGTH_IN_MM);
     while (!stepper.motionComplete()) {
       // BAS: monitor the PAUSE/RESUME buttons here? Forrest says YES
     }
@@ -647,7 +663,7 @@ void loop() {
     Serial.println("Case CALIBRATE");
     update_oled_calibrate("RELEASE CO2 BUTTON", "", "RELEASE CO2 BUTTON", "", "RELEASE CO2 BUTTON");
     delay(5000);
-    update_oled_calibrate("CALIBRATE");
+    update_oled_calibrate("CALIBRATE SWITCH");
     stepper.setSpeedInMillimetersPerSecond(25);
     stepper.setAccelerationInMillimetersPerSecondPerSecond(25);
     stepper.setDecelerationInMillimetersPerSecondPerSecond(25);
@@ -666,9 +682,7 @@ void loop() {
       }
     }
     update_oled_calibrate("CALIB INHALE STRT_POS", "", (String(HUGE_CALIB_MOVE_IN_MM) + "mm move underway"),
-                          "", "No input while moving");
-    delay(3000); // to leave the msg on the OLED for a few second
-    update_oled_calibrate("CALIBRATE");
+                          "", "No input while moving");    
     stepper.setCurrentPositionInMillimeters(0); // the point where the home switch activates
     stepper.setSpeedInMillimetersPerSecond(50);
     stepper.setAccelerationInMillimetersPerSecondPerSecond(75);
@@ -681,6 +695,7 @@ void loop() {
     volume_knob.setCount(HUGE_CALIB_MOVE_IN_MM);
     last = HUGE_CALIB_MOVE_IN_MM;
     Serial.println("Huge move complete: position: " + String(stepper.getCurrentPositionInMillimeters()));
+    update_oled_calibrate("CALIB INHALE STRT_POS");
     delay(3000); // leave message on OLED for a bit
     while (digitalRead(co2_btn_pin) == HIGH) {
       position = (volume_knob.getCount());
@@ -691,17 +706,18 @@ void loop() {
         last = position;
       }
     }
-    MAX_STROKE_LENGTH_IN_MM = stepper.getCurrentPositionInMillimeters();
+    MAX_STROKE_LENGTH_IN_MM = (int16_t)stepper.getCurrentPositionInMillimeters();
+    Serial.println("MAX_STROKE_LENGTH_IN_MM after calibration: " + String(MAX_STROKE_LENGTH_IN_MM));
     // write this value to permanent memory
-    EEPROM.write(0, MAX_STROKE_LENGTH_IN_MM);
-    delay(500);
+    write_int_to_eeprom(0, MAX_STROKE_LENGTH_IN_MM);
+    delay(100);
     EEPROM.commit();
-    delay(500);
+    delay(100);
     stepper.setCurrentPositionInMillimeters(0);
     volume_knob.setCount(VOL_KNOB_START_VAL * 100);
     state = IDLE;
     Serial.println("Value written to EEPROM on next line:"); // BAS: remove this when done testing
-    Serial.println(String(EEPROM.read(0)));
+    Serial.println(String(read_int_from_eeprom(0)));
     break;
   } // end CALIBRATE
 
