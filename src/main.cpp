@@ -250,8 +250,8 @@ void update_oled_rmv_max() {
  * @brief Updates the screen for the various phases of Calibration
  */
 
-void update_oled_calibrate(String header = "CALIBRATE HOME SWTCH", String ln_2 = "TVL knob moves 1mm", String ln_3 = "RMV knob moves 25mm", 
-                           String ln_4 = "CW = away from you", String ln_5 = "Push CO2 when done") {
+void update_oled_calibrate(String header = "CALIBRATE HOME SWTCH", String ln_2 = "TVL knob moves 1mm", String ln_3 = "CW = away from you", 
+                           String ln_4 = "CCW = towards you", String ln_5 = "Push CO2 when done") {
   Heltec.display->setColor(BLACK);
   Heltec.display->fillRect(0, 0, bottomcornerX, bottomcornerY);
   Heltec.display->setColor(WHITE);
@@ -673,29 +673,16 @@ void loop() {
     stepper.setDecelerationInMillimetersPerSecondPerSecond(25);
     stepper.setCurrentPositionInMillimeters(0);
     volume_knob.setCount(0);
-    bpm_knob.setCount(0);
     int16_t position = 0;
-    int16_t vol_pos = 0;
-    int16_t last_vol_pos = 0;
-    int16_t bpm_pos = 0;
-    int16_t last_bpm_pos = 0;
+    int16_t last = 0;
     delay(1000);
     while (digitalRead(co2_btn_pin) == HIGH) { // move the piston until it's right where the home switch activates
-      vol_pos = (volume_knob.getCount());
-      if (vol_pos != last_vol_pos) {
-        position += (vol_pos - last_vol_pos);
+      position = (volume_knob.getCount());
+      if (position != last) {
         Serial.println("position count " + String(position));
         stepper.setTargetPositionInMillimeters(position);
         while (!stepper.motionComplete());
-        last_vol_pos = vol_pos;
-      }
-      bpm_pos = (bpm_knob.getCount());
-      if (bpm_pos != last_bpm_pos) {
-        position += (25 * (bpm_pos - last_bpm_pos)); // 25mm per twist
-        Serial.println("position count " + String(position));
-        stepper.setTargetPositionInMillimeters(position);
-        while (!stepper.motionComplete());
-        last_bpm_pos = bpm_pos;
+        last = position;
       }
     }
     update_oled_calibrate("CALIB INHALE STRT_POS", "", (String(HUGE_CALIB_MOVE_IN_MM) + "mm move underway"),
@@ -709,26 +696,18 @@ void loop() {
     stepper.setSpeedInMillimetersPerSecond(25);
     stepper.setAccelerationInMillimetersPerSecondPerSecond(25);
     stepper.setDecelerationInMillimetersPerSecondPerSecond(25);
-    position = HUGE_CALIB_MOVE_IN_MM;
+    volume_knob.setCount(HUGE_CALIB_MOVE_IN_MM);
+    last = HUGE_CALIB_MOVE_IN_MM;
     Serial.println("Huge move complete: position: " + String(stepper.getCurrentPositionInMillimeters()));
     update_oled_calibrate("CALIB INHALE STRT_POS");
     delay(3000); // leave message on OLED for a bit
     while (digitalRead(co2_btn_pin) == HIGH) {
-      vol_pos = (volume_knob.getCount());
-      if (vol_pos != last_vol_pos) {
-        position += (vol_pos - last_vol_pos);
+      position = (volume_knob.getCount());
+      if (position != last) {
         Serial.println("position count " + String(position));
         stepper.setTargetPositionInMillimeters(position);
         while (!stepper.motionComplete());
-        last_vol_pos = vol_pos;
-      }
-      bpm_pos = (bpm_knob.getCount());
-      if (bpm_pos != last_bpm_pos) {
-        position += (25 * (bpm_pos - last_bpm_pos));
-        Serial.println("position count " + String(position));
-        stepper.setTargetPositionInMillimeters(position);
-        while (!stepper.motionComplete());
-        last_bpm_pos = bpm_pos;
+        last = position;
       }
     }
     MAX_STROKE_LENGTH_IN_MM = (int16_t)stepper.getCurrentPositionInMillimeters();
@@ -740,7 +719,6 @@ void loop() {
     delay(100);
     stepper.setCurrentPositionInMillimeters(0.0);
     volume_knob.setCount(VOL_KNOB_START_VAL * 10);
-    bpm_knob.setCount(BPM_KNOB_START_VAL);
     state = IDLE;
     Serial.println("Value written to EEPROM: " + String(read_int_from_eeprom(0))); // BAS: remove this when done testing
     break;
