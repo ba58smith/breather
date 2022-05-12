@@ -380,10 +380,11 @@ void get_encoder_values() {
  * @param bpm - typically, current_bpm
  */
 void set_speed_factors(float volume, uint16_t bpm) {
-  float time = (60.0 / (float)bpm / 2.0); // time in seconds per cycle
+  float time = ((60.0 / (float)bpm) / 2.0); // time in seconds per cycle
   float distance = (volume * VOLUME_TO_MM_CONVERSION);
-  float speed = (distance / time); // (TVL* MM per liter / seconds per cycle
-  float accel = ((distance / pow((time / 2.0), 2.0) * 4.0)); // this is still up to 4% error
+  float speed = ((distance * 4.0) / time); // (TVL* MM per liter / seconds per cycle
+  float accel = (((distance / 4.0) / pow((time / 4.0), 2.0)));
+  Serial.printf("TV=%2.2f BPM=%d time=%4.3f speed=%4.3f accel=%4.3f \n",volume, bpm, time, speed, accel);
   stepper.setSpeedInMillimetersPerSecond(speed);
   stepper.setAccelerationInMillimetersPerSecondPerSecond(accel); 
   stepper.setDecelerationInMillimetersPerSecondPerSecond(accel);
