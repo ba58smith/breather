@@ -11,16 +11,16 @@
 #define VOLUME_TO_MM_CONVERSION 33.3 // 33.3 is according to spec document
 #define ACTUAL_LENGTH_OF_SCREW_IN_MM 275.0 // this is the actual length
 int16_t MAX_STROKE_LENGTH_IN_MM  = 225; // get from EEPROM if it's there; if not, use this. Used in HOMING, set in CALIBRATE
-#define HUGE_CALIB_MOVE_IN_MM 250 // initial move away from limit switch in CALIBRATE
+#define HUGE_CALIB_MOVE_IN_MM 200 // initial move away from limit switch in CALIBRATE
 #define EEPROM_SIZE 10
 
 // knob display min, max, and starting values
-const float VOL_KNOB_MIN_VAL = 1.0;
-const float VOL_KNOB_MAX_VAL = 7.0;
-const uint16_t VOL_KNOB_START_VAL = 4;
-const uint16_t BPM_KNOB_MIN_VAL = 10;
-const uint16_t BPM_KNOB_MAX_VAL = 90;
-const uint16_t BPM_KNOB_START_VAL = 10;
+const float TVL_KNOB_MIN_VAL = 1.0;
+const float TVL_KNOB_MAX_VAL = 7.0;
+const uint16_t TVL_KNOB_START_VAL = 4;
+const uint16_t RMV_KNOB_MIN_VAL = 10;
+const uint16_t RMV_KNOB_MAX_VAL = 90;
+const uint16_t RMV_KNOB_START_VAL = 10;
 const float CO2_KNOB_MIN_VAL = 0.0;
 const float CO2_KNOB_MAX_VAL = 3.0;
 const uint16_t CO2_KNOB_START_VAL = 0;
@@ -50,8 +50,8 @@ enum State_t {
     CALIBRATE
 };
 
-bool home_btn_interrupt_fired = false;
-bool pause_btn_interrupt_fired = false;
+bool tvl_btn_interrupt_fired = false;
+bool rmv_btn_interrupt_fired = false;
 Btn_Action_t pause_btn_action = RESUME; // PAUSE or RESUME - start w/ RESUME (at end of HOMING)
 bool emx_stop_in_effect = false; // set to true when emergencyStop() is called
 bool co2_enabled = false;
@@ -61,19 +61,19 @@ bool co2_valve_opened = false;
 bool btn_state_changed = false; // triggers update_oled_values()                                        
 
 // define all pins
-const uint8_t pause_btn_pin = 35; // the pushbutton on the bpm encoder
-const uint8_t home_btn_pin = 38; // the pushbutton on the volume encoder BAS: s/b 38 - I use 5 b/c of HW issues
+const uint8_t rmv_btn_pin = 38; // the pushbutton on the bpm encoder
+const uint8_t tvl_btn_pin = 35; // the pushbutton on the volume encoder BAS: s/b 38 - I use 5 b/c of HW issues
 const uint8_t co2_btn_pin = 19; // the pushbutton on the co2 encoder
 const uint8_t co2_valve_pin = 17; // opens / closes the co2 valve
-const uint8_t bpm_CLK_pin = 39; // encoder A pins are CLK
-const uint8_t bpm_DT_pin = 34; // encoder B pins are DT
-const uint8_t volume_CLK_pin = 37;
-const uint8_t volume_DT_pin = 36;
-const uint8_t co2_CLK_pin = 32; // sets the timing of the introduction of co2 into the cycle
-const uint8_t co2_DT_pin = 33;
+const uint8_t rmv_A_pin = 37; // encoder A pins are CLK
+const uint8_t rmv_B_pin = 36; // encoder B pins are DT
+const uint8_t tvl_A_pin = 34;
+const uint8_t tvl_B_pin = 39;
+const uint8_t co2_A_pin = 33; // sets the timing of the introduction of co2 into the cycle
+const uint8_t co2_B_pin = 32;
 const uint8_t motor_direction_pin = 26;
 const uint8_t motor_pulse_pin = 27;
-const uint8_t limit_switch_data_pin = 13;
+const uint8_t limit_switch_data_pin = SCK;
 
 float motorStepsPerMillimeter = 25; // verified on Jim's test jig
 float inhale_start = 0.0; // after HOMING or CALIBRATE, it's 0.0, and it's not used until EXHALE
@@ -119,7 +119,7 @@ static IRAM_ATTR void pause_btn_isr() {
   if (interrupt_time - last_interrupt_time > 1000)
   {
   close_co2_valve(); // whether the pause_btn is in PAUSE or RESUME mode, this is still OK
-  pause_btn_interrupt_fired = true;
+  rmv_btn_interrupt_fired = true;
   }
   last_interrupt_time = interrupt_time;
 }
@@ -132,7 +132,7 @@ static IRAM_ATTR void home_btn_isr() {
   {
   Serial.println("home_btn_isr fired");
   close_co2_valve();
-  home_btn_interrupt_fired = true;
+  tvl_btn_interrupt_fired = true;
   }
   last_interrupt_time = interrupt_time;
 }
@@ -159,8 +159,8 @@ static IRAM_ATTR void co2_btn_isr() {
 // Instantiate the stepper
 ESP_FlexyStepper stepper;
 // instantiate the encoders
-ESP32Encoder bpm_knob;
-ESP32Encoder volume_knob;
+ESP32Encoder rmv_knob;
+ESP32Encoder tvl_knob;
 ESP32Encoder co2_knob;
 
 /**
@@ -281,14 +281,14 @@ void update_oled_calibrate(String header = "CALIBRATE HOME SWTCH", String ln_2 =
  * and setCount() values are multiplied by 10, so 3.0 becomes 30.
  */
 float get_volume_as_float() {
-  float count_as_float = ((float)(volume_knob.getCount()) / 10.0);
-  if (count_as_float > VOL_KNOB_MAX_VAL) {
-    count_as_float = VOL_KNOB_MAX_VAL;
-    volume_knob.setCount((uint16_t)(VOL_KNOB_MAX_VAL * 10));
+  float count_as_float = ((float)(tvl_knob.getCount()) / 10.0);
+  if (count_as_float > TVL_KNOB_MAX_VAL) {
+    count_as_float = TVL_KNOB_MAX_VAL;
+    tvl_knob.setCount((uint16_t)(TVL_KNOB_MAX_VAL * 10));
   }
-  else if (count_as_float < VOL_KNOB_MIN_VAL) {
-    count_as_float = VOL_KNOB_MIN_VAL;
-    volume_knob.setCount((uint16_t)(VOL_KNOB_MIN_VAL * 10));
+  else if (count_as_float < TVL_KNOB_MIN_VAL) {
+    count_as_float = TVL_KNOB_MIN_VAL;
+    tvl_knob.setCount((uint16_t)(TVL_KNOB_MIN_VAL * 10));
   }
   return count_as_float;
 }
@@ -298,15 +298,15 @@ float get_volume_as_float() {
  * use this function to read the knob, so that all RMV values will be
  * consistent! 
  */
-uint8_t get_bpm_as_int() {
-  uint8_t count_as_int = bpm_knob.getCount();
-  if (count_as_int > BPM_KNOB_MAX_VAL) {
-    count_as_int = BPM_KNOB_MAX_VAL;
-    bpm_knob.setCount(BPM_KNOB_MAX_VAL);
+uint8_t get_rmv_as_int() {
+  uint8_t count_as_int = rmv_knob.getCount();
+  if (count_as_int > RMV_KNOB_MAX_VAL) {
+    count_as_int = RMV_KNOB_MAX_VAL;
+    rmv_knob.setCount(RMV_KNOB_MAX_VAL);
   }
-  else if (count_as_int < BPM_KNOB_MIN_VAL) {
-    count_as_int = BPM_KNOB_MIN_VAL;
-    bpm_knob.setCount(BPM_KNOB_MIN_VAL);
+  else if (count_as_int < RMV_KNOB_MIN_VAL) {
+    count_as_int = RMV_KNOB_MIN_VAL;
+    rmv_knob.setCount(RMV_KNOB_MIN_VAL);
   }
   return count_as_int;
 }
@@ -346,7 +346,7 @@ float get_co2_duration_as_float() {
 void get_encoder_values() {
   bool knob_value_changed = false;
   float new_vol = get_volume_as_float();
-  uint8_t new_bpm = get_bpm_as_int();
+  uint8_t new_bpm = get_rmv_as_int();
   if (new_vol * new_bpm > RMV_MAX_VAL) {
     update_oled_rmv_max();
   }
@@ -396,8 +396,11 @@ void set_speed_factors(float volume, uint16_t bpm) {
  * emergencyStop() was called (INHALE or EXHALE), it will always go to INHALE next.
  */
 
-void emx_release_callback() {
+void emx_release_callback()
+{
+  set_speed_factors(current_volume, current_bpm);
   stepper.setTargetPositionInMillimeters(inhale_start);
+  while (!stepper.motionComplete());
   state = INHALE_NEXT;
 }
 
@@ -421,8 +424,8 @@ int16_t read_int_from_eeprom(uint8_t address) {
 
 void setup() {
   pinMode(limit_switch_data_pin, INPUT_PULLUP);
-  pinMode(pause_btn_pin, INPUT_PULLUP);
-  pinMode(home_btn_pin, INPUT_PULLUP);
+  pinMode(rmv_btn_pin, INPUT_PULLUP);
+  pinMode(tvl_btn_pin, INPUT_PULLUP);
   pinMode(co2_btn_pin, INPUT_PULLUP);
   pinMode(co2_valve_pin, OUTPUT);
   digitalWrite(co2_valve_pin, HIGH); // get the valve closed right awway.
@@ -433,21 +436,21 @@ void setup() {
   // Enable the weak pull up resistors
   ESP32Encoder::useInternalWeakPullResistors = UP;
 
-  bpm_knob.attachSingleEdge(bpm_DT_pin, bpm_CLK_pin);
-  bpm_knob.setFilter(1023);
-  bpm_knob.setCount(BPM_KNOB_START_VAL); // set the initially-displayed RMV
+  rmv_knob.attachSingleEdge(rmv_B_pin, rmv_A_pin);
+  rmv_knob.setFilter(1023);
+  rmv_knob.setCount(RMV_KNOB_START_VAL); // set the initially-displayed RMV
 
-  volume_knob.attachSingleEdge(volume_DT_pin, volume_CLK_pin);
-  volume_knob.setFilter(1023);
-  volume_knob.setCount(VOL_KNOB_START_VAL * 10); // set the initially-displayed TVL (3 * 10; will be divided by 10 for display)
+  tvl_knob.attachSingleEdge(tvl_B_pin, tvl_A_pin);
+  tvl_knob.setFilter(1023);
+  tvl_knob.setCount(TVL_KNOB_START_VAL * 10); // set the initially-displayed TVL (3 * 10; will be divided by 10 for display)
 
-  co2_knob.attachSingleEdge(co2_DT_pin, co2_CLK_pin);
+  co2_knob.attachSingleEdge(co2_B_pin, co2_A_pin);
   co2_knob.setFilter(1023);
   co2_knob.setCount(CO2_KNOB_START_VAL * 100); // set the initially-displayed CO2 duration (20 * 100; will be divided by 100 for display)
 
   attachInterrupt(co2_btn_pin, co2_btn_isr, FALLING);
-  attachInterrupt(pause_btn_pin, pause_btn_isr, FALLING);
-  attachInterrupt(home_btn_pin, home_btn_isr, FALLING);
+  attachInterrupt(rmv_btn_pin, pause_btn_isr, FALLING);
+  attachInterrupt(tvl_btn_pin, home_btn_isr, FALLING);
 
   Heltec.begin(true, false, true);
   Heltec.display->clear();
@@ -508,17 +511,17 @@ void loop() {
     while (!stepper.motionComplete()) {
       // BAS: monitor the PAUSE/RESUME buttons here? Forrest says YES
     }
+    
     Serial.println("Should now be at the starting point for every inhale stroke");
     Serial.println("Actual current position is " + String(stepper.getCurrentPositionInMillimeters()));
     // now we should be at the point where every inhale stroke begins, and the point where every
     // exhale stroke returns to. Set it to 0.0.
     // The following was here, and was working. Suddenly, it wasn't working, so it was moved to
     // the top of INHALE. (The motor would occasionally make a very large move again, at this point.)
-    // stepper.setCurrentPositionInMillimeters(0.0);
+     //stepper.setCurrentPositionInMillimeters(0.0);
+    state = IDLE;
     }
-    if (state == HOMING) {
-      state = IDLE;
-    }
+
     break;
   } // end HOMING
 
@@ -526,8 +529,8 @@ void loop() {
     Serial.println("Case FAILED_HOMING");
     update_oled_failed_homing();
     while (state == FAILED_HOMING) {
-      if (home_btn_interrupt_fired) {
-        home_btn_interrupt_fired = false;
+      if (tvl_btn_interrupt_fired) {
+        tvl_btn_interrupt_fired = false;
         state = HOMING; 
         break;
       }
@@ -542,16 +545,16 @@ void loop() {
     draw_oled_header();
     update_oled_values();
     while (state == IDLE) {
-      if (pause_btn_interrupt_fired) { // any push of the pause_btn acts as the "START" button in this situation
+      if (rmv_btn_interrupt_fired) { // any push of the pause_btn acts as the "START" button in this situation
         state = INHALE;
         pause_btn_action = PAUSE; // set for the next time the button is pushed
         btn_state_changed = true;
-        pause_btn_interrupt_fired = false;
+        rmv_btn_interrupt_fired = false;
         break;
       }
-      if (home_btn_interrupt_fired) {
+      if (tvl_btn_interrupt_fired) {
         state = HOMING;
-        home_btn_interrupt_fired = false;
+        tvl_btn_interrupt_fired = false;
         break;
       }
       get_encoder_values();
@@ -582,30 +585,30 @@ void loop() {
           co2_valve_opened = false;
         }
       }
-      if (pause_btn_interrupt_fired) {
+      if (rmv_btn_interrupt_fired) {
         if (pause_btn_action == PAUSE) {
           // co2 valve was already closed, in the isr for this button
           pause_btn_action = RESUME; // set for the next button press
           stepper.emergencyStop(true); // "true" means "wait for a call to releaseEmergencyStop()"
           Serial.println("INHALE: pause_btn emergencyStop()");
-          pause_btn_interrupt_fired = false;
+          rmv_btn_interrupt_fired = false;
           emx_stop_in_effect = true;
         }
         else { // pause button press means RESUME
           pause_btn_action = PAUSE; // set for the next button press
           stepper.releaseEmergencyStop();
           Serial.println("INHALE: pause_btn releaseEmergencyStop()");
-          pause_btn_interrupt_fired = false;
+          rmv_btn_interrupt_fired = false;
           emx_stop_in_effect = false;
         }
         btn_state_changed = true;
       }
-      if (home_btn_interrupt_fired) {
+      if (tvl_btn_interrupt_fired) {
          // co2 valve has already been closed, in the isr for this button
          stepper.emergencyStop(false); // "false" means "don't wait for a call to stepper.releaseEmergencyStop()"
          Serial.println("INHALE: home_btn emergencyStop()");
          state = HOMING;
-         home_btn_interrupt_fired = false;
+         tvl_btn_interrupt_fired = false;
          break; // break out of the while(), but not out of the INHALE case
       }
       get_encoder_values();
@@ -628,13 +631,13 @@ void loop() {
           co2_valve_opened = false;
         }
       }
-      if (pause_btn_interrupt_fired) {
+      if (rmv_btn_interrupt_fired) {
         if (pause_btn_action == PAUSE) {
           // co2 valve was already closed, in the isr for this button
           pause_btn_action = RESUME; // set for the next button press
           stepper.emergencyStop(true); // "true" means "wait for a call to releaseEmergencyStop()"
           Serial.println("EXHALE: pause_btn emergencyStop()");
-          pause_btn_interrupt_fired = false;
+          rmv_btn_interrupt_fired = false;
           emx_stop_in_effect = true;
         }
         else { // pause button press means "resume"
@@ -644,12 +647,12 @@ void loop() {
           emx_stop_in_effect = false;
         }
         btn_state_changed = true;
-        pause_btn_interrupt_fired = false;
+        rmv_btn_interrupt_fired = false;
       }
-      if (home_btn_interrupt_fired) {
+      if (tvl_btn_interrupt_fired) {
          // co2 valve has already been closed, in the isr for this button
          state = HOMING;
-         home_btn_interrupt_fired = false;
+         tvl_btn_interrupt_fired = false;
          stepper.emergencyStop(false); // "false" means "don't wait for a call to stepper.releaseEmergencyStop()"
          Serial.println("EXHALE: home_btn emergencyStop()");
          break; // break out of the while()
@@ -667,18 +670,18 @@ void loop() {
   {
     Serial.println("Case CALIBRATE");
     update_oled_calibrate("RELEASE CO2 BUTTON", "", "RELEASE CO2 BUTTON", "", "RELEASE CO2 BUTTON");
-    delay(5000);
+    delay(1000);
     update_oled_calibrate("CALIBRATE SWITCH");
     stepper.setSpeedInMillimetersPerSecond(25);
     stepper.setAccelerationInMillimetersPerSecondPerSecond(25);
     stepper.setDecelerationInMillimetersPerSecondPerSecond(25);
     stepper.setCurrentPositionInMillimeters(0);
-    volume_knob.setCount(0);
+    tvl_knob.setCount(0);
     int16_t position = 0;
     int16_t last = 0;
     delay(1000);
     while (digitalRead(co2_btn_pin) == HIGH) { // move the piston until it's right where the home switch activates
-      position = (volume_knob.getCount());
+      position = (tvl_knob.getCount());
       if (position != last) {
         Serial.println("position count " + String(position));
         stepper.setTargetPositionInMillimeters(position);
@@ -697,13 +700,13 @@ void loop() {
     stepper.setSpeedInMillimetersPerSecond(25);
     stepper.setAccelerationInMillimetersPerSecondPerSecond(25);
     stepper.setDecelerationInMillimetersPerSecondPerSecond(25);
-    volume_knob.setCount(HUGE_CALIB_MOVE_IN_MM);
+    tvl_knob.setCount(HUGE_CALIB_MOVE_IN_MM);
     last = HUGE_CALIB_MOVE_IN_MM;
     Serial.println("Huge move complete: position: " + String(stepper.getCurrentPositionInMillimeters()));
     update_oled_calibrate("CALIB INHALE STRT_POS");
     delay(3000); // leave message on OLED for a bit
     while (digitalRead(co2_btn_pin) == HIGH) {
-      position = (volume_knob.getCount());
+      position = (tvl_knob.getCount());
       if (position != last) {
         Serial.println("position count " + String(position));
         stepper.setTargetPositionInMillimeters(position);
@@ -718,9 +721,9 @@ void loop() {
     delay(100);
     EEPROM.commit();
     delay(100);
-    stepper.setCurrentPositionInMillimeters(0.0);
-    volume_knob.setCount(VOL_KNOB_START_VAL * 10);
-    state = IDLE;
+    //stepper.setCurrentPositionInMillimeters(0.0);
+    tvl_knob.setCount(TVL_KNOB_START_VAL * 10);
+    state = HOMING;
     Serial.println("Value written to EEPROM: " + String(read_int_from_eeprom(0))); // BAS: remove this when done testing
     break;
   } // end CALIBRATE
