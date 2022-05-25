@@ -519,7 +519,9 @@ void loop() {
     // The following was here, and was working. Suddenly, it wasn't working, so it was moved to
     // the top of INHALE. (The motor would occasionally make a very large move again, at this point.)
      //stepper.setCurrentPositionInMillimeters(0.0);
-    state = IDLE;
+    // if state hasn't changed to FAILED_HOMING by now, then we're ready for IDLE
+    if (state == HOMING) {
+      state = IDLE;
     }
 
     break;
