@@ -53,7 +53,7 @@ enum State_t {
 bool tvl_btn_interrupt_fired = false;
 bool rmv_btn_interrupt_fired = false;
 Btn_Action_t pause_btn_action = RESUME; // PAUSE or RESUME - start w/ RESUME (at end of HOMING)
-bool emx_stop_in_effect = false; // set to true when emergencyStop is called
+bool emx_stop_in_effect = false;
 bool co2_enabled = false;
 Btn_Action_t co2_btn_action = ENABLE; // ENABLE or DISABLE or NO_ACTION (during calibration)
 elapsedMillis co2_timer = 0.00;
@@ -391,14 +391,14 @@ void set_speed_factors(float volume, uint16_t bpm) {
 }
 
 /**
- * @brief Callback for releaseEmergencyStop. Gets the piston to inhale_start (0.0),
+ * @brief Gets the piston to inhale_start (0.0),
  * then sets state to INHALE_NEXT, so that no matter what stroke we were in when
- * emergencyStop was called (INHALE or EXHALE), it will always go to INHALE next.
+ * the Stop was called (INHALE or EXHALE), it will always go to INHALE next.
  */
 
-void emx_release_callback()
+void release_a_stop()
 {
-  set_speed_factors(current_volume, current_bpm); // BAS: FG says the move to inhale_start at this point is nice and smooth
+  //set_speed_factors(current_volume, current_bpm); BAS: not necessary - speed factors didn't change
   stepper.setTargetPositionInMillimeters(inhale_start);
   while (!stepper.motionComplete());
   state = INHALE_NEXT;
@@ -466,7 +466,6 @@ void setup() {
   else {
     Serial.println("Stepper failed to start in Core 0");
   }
-  stepper.registerEmergencyStopReleasedCallback(emx_release_callback);
   delay(500);
   int16_t max_stroke_from_memory = read_int_from_eeprom(0);
   Serial.println("value retrieved from EEPROM = " + String(max_stroke_from_memory));
@@ -566,7 +565,7 @@ void loop() {
   } // case IDLE
 
   case INHALE_NEXT: {
-    Serial.println("Case INHALE_NEXT"); // for breaking out of an emergencyStop
+    Serial.println("Case INHALE_NEXT"); // for breaking out of a Stop
     state = INHALE; // BAS: try setting state to IDLE at this point - see if the ensuing stalling stops happening
     break;
   } // case INHALE_NEXT
@@ -591,15 +590,15 @@ void loop() {
         if (pause_btn_action == PAUSE) {
           // co2 valve was already closed, in the isr for this button
           pause_btn_action = RESUME; // set for the next button press
-          stepper.emergencyStop(true); // "true" means "wait for a call to releaseEmergencyStop" // BAS: try setTargetPositionToStop() here
-          Serial.println("INHALE: pause_btn emergencyStop");
+          stepper.setTargetPositionToStop();
+          Serial.println("INHALE: pause_btn Stop");
           rmv_btn_interrupt_fired = false;
           emx_stop_in_effect = true;
         }
         else { // pause button press means RESUME
           pause_btn_action = PAUSE; // set for the next button press
-          stepper.releaseEmergencyStop(); // BAS: if you use setTargetPositionToStop() above, need to do something different here
-          Serial.println("INHALE: pause_btn releaseEmergencyStop");
+          release_a_stop();
+          Serial.println("INHALE: pause_btn release Stop");
           rmv_btn_interrupt_fired = false;
           emx_stop_in_effect = false;
         }
@@ -607,8 +606,8 @@ void loop() {
       }
       if (tvl_btn_interrupt_fired) {
          // co2 valve has already been closed, in the isr for this button
-         stepper.emergencyStop(false); // "false" = "don't wait for a call to releaseEmergencyStop" BAS: try setTargetPositionToStop() here
-         Serial.println("INHALE: home_btn emergencyStop");
+         stepper.setTargetPositionToStop();
+         Serial.println("INHALE: home_btn Stop");
          state = HOMING;
          tvl_btn_interrupt_fired = false;
          break; // break out of the while(), but not out of the INHALE case
@@ -637,15 +636,15 @@ void loop() {
         if (pause_btn_action == PAUSE) {
           // co2 valve was already closed, in the isr for this button
           pause_btn_action = RESUME; // set for the next button press
-          stepper.emergencyStop(true); // "true" = "wait for a call to releaseEmergencyStop" // BAS: try setTargetPositionToStop() here
-          Serial.println("EXHALE: pause_btn emergencyStop");
+          stepper.setTargetPositionToStop();
+          Serial.println("EXHALE: pause_btn Stop");
           rmv_btn_interrupt_fired = false;
           emx_stop_in_effect = true;
         }
         else { // pause button press means "resume"
           pause_btn_action = PAUSE; // set for the next button press
-          stepper.releaseEmergencyStop(); // BAS: if you use setTargetPositionToStop above, do something different here
-          Serial.println("EXHALE: pause_btn releaseEmergencyStop");
+          release_a_stop();
+          Serial.println("EXHALE: pause_btn release Stop");
           emx_stop_in_effect = false;
         }
         btn_state_changed = true;
@@ -655,8 +654,8 @@ void loop() {
          // co2 valve has already been closed, in the isr for this button
          state = HOMING;
          tvl_btn_interrupt_fired = false;
-         stepper.emergencyStop(false); // "false" means "don't wait for a call to stepper.releaseEmergencyStop"
-         Serial.println("EXHALE: home_btn emergencyStop");
+         stepper.setTargetPositionToStop();
+         Serial.println("EXHALE: home_btn Stop");
          break; // break out of the while()
       }
       get_encoder_values();
