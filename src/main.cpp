@@ -400,7 +400,9 @@ void release_a_stop()
 {
   //set_speed_factors(current_volume, current_bpm); BAS: not necessary - speed factors didn't change
   stepper.setTargetPositionInMillimeters(inhale_start);
-  while (!stepper.motionComplete());
+  while (!stepper.motionComplete()) {
+    // do nothing
+  }
   state = INHALE_NEXT;
 }
 
@@ -685,7 +687,9 @@ void loop() {
       if (position != last) {
         Serial.println("position count " + String(position));
         stepper.setTargetPositionInMillimeters(position);
-        while (!stepper.motionComplete());
+        while (!stepper.motionComplete()) {
+          // do nothing
+        }
         last = position;
       }
     }
@@ -696,7 +700,9 @@ void loop() {
     stepper.setAccelerationInMillimetersPerSecondPerSecond(75);
     stepper.setDecelerationInMillimetersPerSecondPerSecond(75);
     stepper.setTargetPositionInMillimeters(HUGE_CALIB_MOVE_IN_MM); // move a lot closer to the inhale beginning point
-    while (!stepper.motionComplete());
+    while (!stepper.motionComplete()) {
+      // do nothing
+    }
     stepper.setSpeedInMillimetersPerSecond(25);
     stepper.setAccelerationInMillimetersPerSecondPerSecond(25);
     stepper.setDecelerationInMillimetersPerSecondPerSecond(25);
@@ -710,7 +716,9 @@ void loop() {
       if (position != last) {
         Serial.println("position count " + String(position));
         stepper.setTargetPositionInMillimeters(position);
-        while (!stepper.motionComplete());
+        while (!stepper.motionComplete()) {
+          // do nothing
+        }
         last = position;
       }
     }
