@@ -61,7 +61,7 @@ bool co2_valve_opened = false;
 bool btn_state_changed = false; // triggers update_oled_values()                                        
 
 // define all pins
-const uint8_t rmv_btn_pin = 38; // the pushbutton on the rmv encoder
+const uint8_t rmv_btn_pin = 5; // the pushbutton on the rmv encoder //BAS: s/b 38 - I have to use 5 b/c of a hardware problem
 const uint8_t tvl_btn_pin = 35; // the pushbutton on the tvl encoder
 const uint8_t co2_btn_pin = 19; // the pushbutton on the co2 encoder
 const uint8_t co2_valve_pin = 17; // opens / closes the co2 valve
@@ -519,11 +519,11 @@ void loop() {
     // The following was here, and was working. Suddenly, it wasn't working, so it was moved to
     // the top of INHALE. (The motor would occasionally make a very large move again, at this point.)
      //stepper.setCurrentPositionInMillimeters(0.0);
-    // if state hasn't changed to FAILED_HOMING by now, then we're ready for IDLE
+    }
+    // if we made it all the way through HOMING w/o going to FAILED_HOMING, go to IDLE
     if (state == HOMING) {
       state = IDLE;
     }
-
     break;
   } // end HOMING
 
@@ -668,8 +668,7 @@ void loop() {
     break; // break out of the switch() and start again at the top with the new state: INHALE or HOMING 
   }  // end case EXHALE
 
-  case CALIBRATE:
-  {
+   case CALIBRATE: {
     Serial.println("Case CALIBRATE");
     update_oled_calibrate("RELEASE CO2 BUTTON", "", "RELEASE CO2 BUTTON", "", "RELEASE CO2 BUTTON");
     delay(1000);
