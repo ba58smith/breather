@@ -582,7 +582,7 @@ void loop() {
     while (!stepper.motionComplete() || emx_stop_in_effect) {
       // if the co2_duration is > the time of the exhale stroke, the valve may still be open
       if (co2_valve_opened) {
-        if (co2_timer / 1000.0 > current_co2_duration) {
+        if ((float)co2_timer / 1000.0 >= current_co2_duration) {
           close_co2_valve();
           co2_valve_opened = false;
         }
@@ -614,7 +614,6 @@ void loop() {
          break; // break out of the while(), but not out of the INHALE case
       }
       get_encoder_values();
-      delay(100);
     }
     if (state == INHALE) { // it didn't change to HOMING in the while()
       state = EXHALE;
@@ -628,7 +627,7 @@ void loop() {
     co2_valve_opened = open_co2_valve(); // true if valve is enabled and duration is > 0.0
     while (!stepper.motionComplete() || emx_stop_in_effect) {
       if (co2_valve_opened) {
-        if (co2_timer / 1000.0 > current_co2_duration) {
+        if ((float)co2_timer / 1000.0 >= current_co2_duration) {
           close_co2_valve();
           co2_valve_opened = false;
         }
@@ -660,7 +659,6 @@ void loop() {
          break; // break out of the while()
       }
       get_encoder_values();
-      delay(100);
     }
     if (state == EXHALE) { // it made it all the way through the while() with no state change
       state = INHALE;
