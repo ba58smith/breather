@@ -549,6 +549,7 @@ void loop() {
     update_oled_values();
     while (state == IDLE) {
       if (rmv_btn_interrupt_fired) { // any push of the pause_btn acts as the "START" button in this situation
+        Serial.println("IDLE: pause/release btn");
         state = INHALE;
         pause_btn_action = PAUSE; // set for the next time the button is pushed
         btn_state_changed = true;
@@ -556,12 +557,12 @@ void loop() {
         break;
       }
       if (tvl_btn_interrupt_fired) {
+        Serial.println("IDLE: home btn");
         state = HOMING;
         tvl_btn_interrupt_fired = false;
         break;
       }
       get_encoder_values();
-      delay(100);
     }
     break;
   } // case IDLE
@@ -615,7 +616,6 @@ void loop() {
          break; // break out of the while(), but not out of the INHALE case
       }
       get_encoder_values();
-      delay(100);
     }
     if (state == INHALE) { // it didn't change to HOMING in the while()
       state = EXHALE;
@@ -661,7 +661,6 @@ void loop() {
          break; // break out of the while()
       }
       get_encoder_values();
-      delay(100);
     }
     if (state == EXHALE) { // it made it all the way through the while() with no state change
       state = INHALE;
